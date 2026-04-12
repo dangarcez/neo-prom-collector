@@ -1,0 +1,48 @@
+prom_targets:
+  - name: prometheus_up_demo
+    base_url: http://host.docker.internal:8085
+    timeout_seconds: 10
+    verify_tls: true
+    runtime:
+      default_interval_seconds: 45
+      sleep_seconds: 1
+      dry_run: false
+    jobs:      
+      - name: prometheus_build
+        query: up
+        interval_seconds: 30
+        nodes:
+          - types: 
+              - PrometheusJob
+            template_hashes:
+              - prometheus-job-v1
+            update_policy: merge
+            label_properties:
+              name: job
+              job: job
+
+          - type: PrometheusTarget
+            template_hashes:
+              - prometheus-target-v1
+            static_properties:
+              kind: scrape_target
+            label_properties:
+              name: instance
+              job: job
+              instance: instance
+              status: __value__
+
+        relationships:
+          - type: SCRAPES
+            template_hash: job-scrapes-target-v1
+            update_policy: merge
+            source:
+              type: PrometheusJob
+              match_attributes:
+                labels:
+                  name: job
+            target:
+              type: PrometheusTarget
+              match_attributes:
+                labels:
+                  name: instance

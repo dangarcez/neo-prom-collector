@@ -1,0 +1,109 @@
+
+neo4j:
+  uri: ${NEO4J_URI:bolt://localhost:7687}
+  database: neo4j
+  username: ${NEO4J_USERNAME:neo4j}
+  password_env: NEO4J_PASSWORD
+  timeout_seconds: 10
+  verify_connectivity: true
+
+prom_targets:
+  - name: main_prometheus
+    base_url: http://localhost:9090
+    timeout_seconds: 10
+    verify_tls: true
+
+    runtime:
+      default_interval_seconds: 60
+      sleep_seconds: 1
+      dry_run: false
+
+    jobs:
+      - name: kubernetes_pods
+        query: kube_pod_info
+        interval_seconds: 30
+        nodes:
+          - types: 
+              - Cluster
+            template_hashes:
+              - cluster-v1
+            static_properties:
+              kind: cluster
+            label_properties:
+              name: cluster
+
+          - type: Namespace
+            template_hashes:
+              - namespace-v1
+            label_properties:
+              name: namespace
+            conditions:
+              - label: namespace
+                equals: production
+                type: label
+
+          - types: 
+              - Pod
+            template_hashes:
+              - pod-v1
+            static_properties:
+              kind: workload
+              source_system: prometheus
+            label_properties:
+              name: pod
+              namespace: namespace
+              node_name: node
+              scrape_value: __value__
+              scrape_timestamp: __timestamp__            
+            conditional_properties:
+              - type: static
+                name: stage
+                value: first_stage
+                conditions:
+                - type: label
+                  label: stage
+                  equals: stage_one              
+              - type: static
+                name: activity
+                value: high
+                conditions:
+                - type: value
+                  greaterThen: 100
+
+
+
+        relationships:
+          - type: CONTAINS
+            template_hashes:
+              - cluster-namespace-v1
+            source:
+              type: Cluster
+              match_label_attributes:
+                static:
+                name: cluster
+            target:
+              type: Namespace
+              match_label_attributes:
+                name: namespace
+
+          - type: OWNS
+            template_hashes:
+              - namespace-pod-v1
+            source:
+              type: Namespace
+              match_label_attributes:
+                name: namespace
+            target:
+              type: Pod
+              match_label_attributes:
+                name: pod
+            static_properties:
+              source_system: prometheus                       
+            conditional_properties:
+              - type: label
+                name: node
+                from_label: default_node
+                conditions:
+                - type: label
+                  label: default_node
+                  not_equals: node_1   

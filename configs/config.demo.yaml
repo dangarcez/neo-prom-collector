@@ -1,0 +1,98 @@
+prom_targets:
+  - name: main_prometheus
+    base_url: http://localhost:9090
+    timeout_seconds: 10
+    verify_tls: true
+    runtime:
+      default_interval_seconds: 60
+      sleep_seconds: 0
+      dry_run: false
+    jobs:
+      - name: kubernetes_pods
+        query: kube_pod_info
+        interval_seconds: 30
+        nodes:
+          - types:
+              - Cluster
+            template_hashes:
+              - cluster-v1
+            static_properties:
+              kind: cluster
+            label_properties:
+              name: cluster
+
+          - types:
+              - Namespace
+            template_hashes:
+              - namespace-v1
+            label_properties:
+              name: namespace
+            conditions:
+              - type: label
+                label: namespace
+                equals: production
+
+          - types:
+              - Pod
+            template_hashes:
+              - pod-v1
+            static_properties:
+              kind: workload
+              source_system: prometheus
+            label_properties:
+              name: pod
+              namespace: namespace
+              node_name: node
+              scrape_value: __value__
+              scrape_timestamp: __timestamp__
+            conditional_properties:
+              - type: static
+                name: activity
+                value: high
+                conditions:
+                  - type: value
+                    greater_than: 100
+              - type: label
+                name: stage
+                from_label: stage
+                conditions:
+                  - type: label
+                    label: stage
+                    equals: stage_one
+
+        relationships:
+          - type: CONTAINS
+            template_hash: cluster-namespace-v1
+            source:
+              type: Cluster
+              match_attributes:
+                labels:
+                  name: cluster
+            target:
+              type: Namespace
+              match_attributes:
+                labels:
+                  name: namespace
+
+          - type: OWNS
+            template_hash: namespace-pod-v1
+            static_properties:
+              source_system: prometheus
+            source:
+              type: Namespace
+              match_attributes:
+                labels:
+                  name: namespace
+            target:
+              type: Pod
+              match_attributes:
+                labels:
+                  name: pod
+            conditional_properties:
+              - type: label
+                name: default_node
+                from_label: node
+                conditions:
+                  - type: label
+                    label: node
+                    not_equals: node_1

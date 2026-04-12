@@ -1,0 +1,101 @@
+
+## Objetivo
+Quero criar uma automação que vai criar nodes e relacionamentos em um neo4j a partir de informações coletadas de prometheus. Essa solução precisa ser dinamica (configuravel e escalavel). 
+
+## Contexto
+   Esta é uma solução secundaria que integra a um app principal, por isso de algumas regras presentes nesse documento existirem. Neste app principal existe um guia para automações externas. Esta no documento "ingestao-automatica.md" neste diretorio, mas ignore as partes de consultar as definições em endpoints externos, as infos necessárias vao ser passadas manualmente no yaml de configuração deste app
+
+## Stack / Tecnologia
+Golang
+
+## Regras
+   Deve ser limpo, modular e bem comentado, buscando facilitar manutenção futura 
+   Deve ter .env para configurações de conexão com neo4j e demais configurações necessárias ( Que não faça parte das configurações de query no prometheus, isso sera configurado em um yaml a parte)
+
+## Detalhamento
+Quero um script que vai rodar em container (mas quero poder testar local) e que seja configuravel por yaml. Vai funcionar da seguinte maneira, o script vai fazer queries em certos intervalos para um prometheus (ou varios, dependendo da configuração do yaml), a partir dos dados, esse script deve se comunicar com o neo4j para criar ou atualizar nodes e relacionamentos. 
+
+O yaml vai ser construido dessa maneira:
+
+- Primeiro o usuário vai poder selecionar um lista de targets (podendo ser um prometheus ou mais), que são endpoints do prometheus para realizar as queries.
+
+- Para cada target, o usuário vai selecionar uma lista de jobs, que especificam queries especificas neste prometheus
+
+- Para cada job, o usuário vai definir uma query e o intervalo de tempo que essa query deve ser executada. Nos jobs serão definidos os nodes e relacionamentos que serão criados ou atualizados. Deve ficar claro uma coisa, cada job vai rodar em cima de cada resultado (de forma separado) da query no prometheus, então se a query rodar 5 datapoints por exemplo, a logica vai ser aplicada para cada datapoint de forma separada.
+
+- Na lista de nodes, para cada node, o usuário vai definir a lógica pra criar aquele node, a partir das labels do datapoint. Cada node deve ser configuravel as seguintes opçoes:
+
+
+### Campos obritório e manuais:
+   "Type": no campo type o usuário deve colocar uma lista de tipos para esse node a ser criado, ou seja as labels desse node. Devendo ser no minima uma.
+   "template_hashes": este campo é uma string, onde o usuário vai setar manualmente para cada node também    
+   "update_policy": define se a node deve ser criado ou atualizado se ja existir (valor merge), ou se deve ser apenas criado se nao existe (valor create, este é o default caso o update_policy nao seja especificado)
+
+### Propriedade de node estáticos
+   Estas são propriedades ou atributos que o usuário vai colocar para aquele node de forma estática (não vai depender do datapoint). O usuário por colocar, nenhum ou varios desses campos estáticos.
+### Propriedades de node dinâmico
+   Esta propriedades definidas no node a ser criado devem vir de labels dos datapoints, então o usuário vai relecionar o nome do campo no node do neo4j e de qual label o valor desse campo vai ser originado. O usuário também deve ter possibilidade de colocar outros valores dinamicos para essas propriedades, como por exemplo o "value" do datapoint, ou o timestamp.
+### Propriedades de node com condicao
+   Sao propriedades que vao ser setadas de acordo com condicoes. Essa propriedades vao ter 2 tipo, label e static, que indica a origem do valor da propriedade criada. As concicoes tambem vao ter 2 tipos, label e value, que indica oque vai ser comparado, se vai ser o valor de uma label ou o value do datapoint. 
+
+### Condições para o node ser criado
+   Essas condições podem ter 2 tipos, label e value. Para label deve ter 2 comparacoes, equals ou not_equals . Para value 3, equals, not_equals, greaterThan, lessThan 
+
+Atenção, entre as proriedades de node estáticos ou dinamicos, deve haver uma com key "name".
+
+Alem dessas configurações no yaml, para cada node a aplicação deve criar para os nodes:
+### Campos criados automáticamento pela aplicação
+   - `node_uid`: UUID estavel em formato string , esse uuid deve ser gerado pelo script
+   - label base `Entity` : Todo node vai ter essa label base
+   - campo `origin = "auto"`
+   - campo `created_at` em ISO 8601 
+   - campo `updated_at` em ISO 8601 
+
+- Na lista de relacionamentos, para cada relacionamento, o usuário vai definir a lógica pra criar aquele relacionamento, a partir das labels do datapoint. Cada relacionamento deve ser configuravel as seguintes opçoes:
+
+
+### Campos obritório e manuais:
+   "Type": no campo type o usuário deve colocar o tipo (label) da que relacionamento.
+   "template_hashes": este campo é uma string, onde o usuário vai setar manualmente para cada relacionamento também 
+   "update_policy": define se a relacionamento deve ser criado ou atualizado se ja existir (valor merge), ou se deve ser apenas criado se nao existe (valor create, este é o default caso o update_policy nao seja especificado)
+
+### Propriedade de relacionamento estáticos
+   Estas são propriedades ou atributos que o usuário vai colocar para aquele relacionamento de forma estática (não vai depender do datapoint). O usuário por colocar, nenhum ou varios desses campos estáticos.
+### Propriedades de relacionamento dinâmico
+   Esta propriedades definidas no relacionamento a ser criado devem vir de labels dos datapoints, então o usuário vai relecionar o nome do campo no node do neo4j e de qual label o valor desse campo vai ser originado. O usuário também deve ter possibilidade de colocar outros valores dinamicos para essas propriedades, como por exemplo o "value" do datapoint, ou o timestamp.
+### Propriedades de relacionamento com condicao
+   Sao propriedades que vao ser setadas de acordo com condicoes. Essa propriedades vao ter 2 tipo, label e static, que indica a origem do valor da propriedade criada. As concicoes tambem vao ter 2 tipos, label e value, que indica oque vai ser comparado, se vai ser o valor de uma label ou o value do datapoint. 
+
+### Condições para o node ser criado
+   Essas condições podem ter 2 tipos, label e value. Para label deve ter 2 comparacoes, equals ou not_equals . Para value 3, equals, not_equals, greaterThan, lessThan 
+
+Alem disso, cada relacionamento vai ter 2 objetos, o node de origem e node de destino. Cada um desses deve ser configurado:
+      TIPO (colocada manualmente)
+      Atributos: Conjunto de chaves valores que deve dar match com o node de origem ou destino, os valores podem vir de labels do resultado da query, então deve ter uma parte de valores manuais e uma parte de valores dinamicos (vindo do datapoint)
+
+Alem dessas configurações no yaml, para cada relacionamento a aplicação deve criar para os relacionamentos:
+### Campos criados automáticamento pela aplicação
+   - `node_uid`: UUID estavel em formato string , esse uuid deve ser gerado pelo script
+   - campo `origin = "auto"`
+   - campo `created_at` em ISO 8601 
+   - campo `updated_at` em ISO 8601 
+
+Para referencia, criei um arquivo de configuração no arquivo "config.demo.yaml" neste diretorio. Pode ter inconsistencias no arquivo, e não necessariamente todas as nomeclaturas e estruturas devem ser seguidas, é apenas uma referencia
+----------------
+
+
+Regras para manter consistencia:
+ -  Antes de criar um node, deve ser verificado a existencia de um node de mesmo tipo e nome no neo4j, se ja existe, considerar valor "update policy", para verificar se o node deve ser atualizado ou nao fazer nada.
+ -  A criacao do relacionamento nao deve criar novos nodes, apenas o relacionamento entre nodes ja existentes, caso nodes nao existirem, nao deve fazer nada. Deve exister tambem verificar de relacionamento equivalente, se ja existe, considerar valor "update policy", para verificar se o relacionamento deve ser atualizado ou nao fazer nada.
+ - Ao criar ou atualizar node, o campo "updated_at" sempre deve ser atualizado
+
+
+
+## Entregavel
+   Código funcional
+   Estrutura de projeto
+   Inclua arquivo de instruções pra build, deploy, testes locais, etc..
+   Instruções e artefatos para build e deploy da solução em container docker (alem de execução local)
+   Diretorio docs/ para documentações
+   read.me explicando projeto e sua estrutura. 
+

@@ -1,0 +1,47 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-change-me}
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+
+  prometheus:
+    image: prom/prometheus:v2.49.1
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus/prometheus.compose.yml:/etc/prometheus/prometheus.yml:ro
+
+  neo-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neo-collector
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_CONFIG_PATH: /app/configs/config.compose.yaml
+      NEO4J_URI: bolt://neo4j:7687
+    command:
+      - "--config"
+      - "/app/configs/config.compose.yaml"
+    depends_on:
+      - neo4j
+      - prometheus
+    volumes:
+      - ./configs:/app/configs:ro
+
+volumes:
+  neo4j_data:

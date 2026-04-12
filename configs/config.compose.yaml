@@ -1,0 +1,52 @@
+prom_targets:
+  - name: main_prometheus
+    base_url: http://prometheus:9090
+    timeout_seconds: 10
+    verify_tls: true
+    runtime:
+      default_interval_seconds: 30
+      sleep_seconds: 0
+      dry_run: false
+    jobs:
+      - name: prometheus_build
+        query: prometheus_build_info
+        interval_seconds: 30
+        nodes:
+          - types:
+              - Prometheus
+            template_hashes:
+              - prometheus-instance-v1
+            update_policy: merge
+            static_properties:
+              name: main_prometheus
+              kind: prometheus
+            label_properties:
+              version: version
+              branch: branch
+
+          - types:
+              - BuildVersion
+            template_hashes:
+              - prometheus-build-v1
+            update_policy: merge
+            label_properties:
+              name: version
+              revision: revision
+              go_version: goversion
+
+        relationships:
+          - type: EXPOSES_BUILD
+            template_hash: prometheus-exposes-build-v1
+            update_policy: merge
+            static_properties:
+              source_system: prometheus
+            source:
+              type: Prometheus
+              match_attributes:
+                static:
+                  name: main_prometheus
+            target:
+              type: BuildVersion
+              match_attributes:
+                labels:
+                  name: version

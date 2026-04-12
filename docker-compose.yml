@@ -1,0 +1,22 @@
+services:
+
+  neo-collector:
+    image: localhost/neo_prom_collector:latest
+    container_name: neo-collector
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_CONFIG_PATH: /app/configs/config.compose.yaml
+      NEO4J_URI: bolt://host.docker.internal:7687
+    command:
+      - "--config"
+      - "/app/configs/config.test.yaml"
+    depends_on:
+      - neo4j
+      - prometheus
+    volumes:
+      - ./configs:/app/configs:ro
+
+volumes:
+  neo4j_data:
