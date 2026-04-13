@@ -191,6 +191,190 @@ func TestProcessorPipelineWithRealPrometheusAndNeo4j(t *testing.T) {
 	}
 }
 
+func TestRepositoryApplyPlanCreatesRelationshipCrossProductForMultipleMatches(t *testing.T) {
+	tc.SkipIfProviderIsNotHealthy(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	neoContainer, neo4jURI := startNeo4jContainer(ctx, t)
+	defer terminateContainer(context.Background(), t, neoContainer)
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repository := waitForNeo4jRepository(ctx, t, config.EnvConfig{
+		Neo4jURI:           neo4jURI,
+		Neo4jDatabase:      "neo4j",
+		Neo4jUsername:      "neo4j",
+		Neo4jPassword:      neo4jPassword,
+		Neo4jTimeout:       5 * time.Second,
+		VerifyConnectivity: true,
+	}, logger)
+	defer func() {
+		if err := repository.Close(context.Background()); err != nil {
+			t.Fatalf("close repository: %v", err)
+		}
+	}()
+
+	nodePlan := domain.MutationPlan{
+		Nodes: []domain.GraphNode{
+			{
+				Types:          []string{"SourceDemo"},
+				Name:           "source-a",
+				TemplateHashes: []string{"source-v1"},
+				UpdatePolicy:   domain.UpdatePolicyCreate,
+				Properties: map[string]any{
+					"name":            "source-a",
+					"group":           "demo",
+					"node_uid":        "source-a-uid",
+					"template_hashes": []string{"source-v1"},
+					"origin":          "auto",
+				},
+				UID: "source-a-uid",
+			},
+			{
+				Types:          []string{"SourceDemo"},
+				Name:           "source-b",
+				TemplateHashes: []string{"source-v1"},
+				UpdatePolicy:   domain.UpdatePolicyCreate,
+				Properties: map[string]any{
+					"name":            "source-b",
+					"group":           "demo",
+					"node_uid":        "source-b-uid",
+					"template_hashes": []string{"source-v1"},
+					"origin":          "auto",
+				},
+				UID: "source-b-uid",
+			},
+			{
+				Types:          []string{"TargetDemo"},
+				Name:           "target-1",
+				TemplateHashes: []string{"target-v1"},
+				UpdatePolicy:   domain.UpdatePolicyCreate,
+				Properties: map[string]any{
+					"name":            "target-1",
+					"group":           "demo",
+					"node_uid":        "target-1-uid",
+					"template_hashes": []string{"target-v1"},
+					"origin":          "auto",
+				},
+				UID: "target-1-uid",
+			},
+			{
+				Types:          []string{"TargetDemo"},
+				Name:           "target-2",
+				TemplateHashes: []string{"target-v1"},
+				UpdatePolicy:   domain.UpdatePolicyCreate,
+				Properties: map[string]any{
+					"name":            "target-2",
+					"group":           "demo",
+					"node_uid":        "target-2-uid",
+					"template_hashes": []string{"target-v1"},
+					"origin":          "auto",
+				},
+				UID: "target-2-uid",
+			},
+			{
+				Types:          []string{"TargetDemo"},
+				Name:           "target-3",
+				TemplateHashes: []string{"target-v1"},
+				UpdatePolicy:   domain.UpdatePolicyCreate,
+				Properties: map[string]any{
+					"name":            "target-3",
+					"group":           "demo",
+					"node_uid":        "target-3-uid",
+					"template_hashes": []string{"target-v1"},
+					"origin":          "auto",
+				},
+				UID: "target-3-uid",
+			},
+		},
+	}
+
+	if _, err := repository.ApplyPlan(ctx, nodePlan); err != nil {
+		t.Fatalf("create seed nodes: %v", err)
+	}
+
+	relationshipPlan := domain.MutationPlan{
+		Relationships: []domain.GraphRelationship{
+			{
+				Type:         "CONNECTS_TO",
+				TemplateHash: "connects-to-v1",
+				UpdatePolicy: domain.UpdatePolicyCreate,
+				Source: domain.NodeSelector{
+					Type: "SourceDemo",
+					Attributes: map[string]any{
+						"group": "demo",
+					},
+				},
+				Target: domain.NodeSelector{
+					Type: "TargetDemo",
+					Attributes: map[string]any{
+						"group": "demo",
+					},
+				},
+				Properties: map[string]any{
+					"template_hashes": []string{"connects-to-v1"},
+					"origin":          "auto",
+				},
+				UID: "connects-to-template-uid",
+			},
+		},
+	}
+
+	firstStats, err := repository.ApplyPlan(ctx, relationshipPlan)
+	if err != nil {
+		t.Fatalf("create fan-out relationships: %v", err)
+	}
+	if firstStats.RelationshipsCreated != 6 {
+		t.Fatalf("expected 6 relationships to be created, got %#v", firstStats)
+	}
+
+	secondStats, err := repository.ApplyPlan(ctx, relationshipPlan)
+	if err != nil {
+		t.Fatalf("reapply fan-out relationships: %v", err)
+	}
+	if secondStats.RelationshipsSkipped != 6 {
+		t.Fatalf("expected 6 relationships to be skipped on reapply, got %#v", secondStats)
+	}
+
+	neo4jDriver, err := driver.NewDriverWithContext(neo4jURI, driver.BasicAuth("neo4j", neo4jPassword, ""))
+	if err != nil {
+		t.Fatalf("create verification driver: %v", err)
+	}
+	defer func() {
+		if err := neo4jDriver.Close(ctx); err != nil {
+			t.Fatalf("close verification driver: %v", err)
+		}
+	}()
+
+	session := neo4jDriver.NewSession(ctx, driver.SessionConfig{DatabaseName: "neo4j"})
+	defer func() {
+		if err := session.Close(ctx); err != nil {
+			t.Fatalf("close verification session: %v", err)
+		}
+	}()
+
+	relationshipCount := readCount(ctx, t, session, `
+MATCH (:Entity:SourceDemo {group: "demo"})-[r:CONNECTS_TO {template_hashes: $template_hashes, origin: "auto"}]->(:Entity:TargetDemo {group: "demo"})
+RETURN count(r) AS count
+`, map[string]any{
+		"template_hashes": []string{"connects-to-v1"},
+	})
+	if relationshipCount != 6 {
+		t.Fatalf("expected exactly 6 fan-out relationships, got %d", relationshipCount)
+	}
+
+	distinctUIDCount := readCount(ctx, t, session, `
+MATCH (:Entity:SourceDemo {group: "demo"})-[r:CONNECTS_TO {template_hashes: $template_hashes, origin: "auto"}]->(:Entity:TargetDemo {group: "demo"})
+RETURN count(DISTINCT r.rel_uid) AS count
+`, map[string]any{
+		"template_hashes": []string{"connects-to-v1"},
+	})
+	if distinctUIDCount != 6 {
+		t.Fatalf("expected 6 distinct relationship rel_uid values, got %d", distinctUIDCount)
+	}
+}
+
 func startPrometheusContainer(ctx context.Context, t *testing.T) (tc.Container, string) {
 	t.Helper()
 

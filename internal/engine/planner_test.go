@@ -113,6 +113,78 @@ func TestPlannerPlanBuildsNodesAndRelationships(t *testing.T) {
 	}
 }
 
+func TestPlannerPlanSkipsMissingOptionalLabelProperties(t *testing.T) {
+	planner := NewPlanner()
+
+	job := config.JobConfig{
+		Name:  "pods",
+		Query: "kube_pod_info",
+		Nodes: []config.NodeTemplateConfig{
+			{
+				Types:          []string{"Pod"},
+				TemplateHashes: []string{"pod-v1"},
+				LabelProperties: map[string]string{
+					"name":      "pod",
+					"namespace": "namespace",
+				},
+			},
+		},
+		Relationships: []config.RelationshipTemplateConfig{
+			{
+				Type:         "BELONGS_TO",
+				TemplateHash: "pod-belongs-to-cluster-v1",
+				LabelProperties: map[string]string{
+					"missing_label": "cluster",
+				},
+				Source: config.RelationshipEndpointConfig{
+					Type: "Pod",
+					MatchAttributes: config.SelectorAttributes{
+						Labels: map[string]string{
+							"name": "pod",
+						},
+					},
+				},
+				Target: config.RelationshipEndpointConfig{
+					Type: "Cluster",
+					MatchAttributes: config.SelectorAttributes{
+						Static: map[string]any{
+							"name": "main",
+						},
+					},
+				},
+			},
+		},
+	}
+	job.Normalize(30)
+
+	datapoint := domain.Datapoint{
+		Labels: map[string]string{
+			"pod": "api-0",
+		},
+		Value:     1,
+		Timestamp: time.Unix(1700000000, 0).UTC(),
+	}
+
+	plan, err := planner.Plan(job, datapoint)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if len(plan.Nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(plan.Nodes))
+	}
+	if len(plan.Relationships) != 1 {
+		t.Fatalf("expected 1 relationship, got %d", len(plan.Relationships))
+	}
+
+	if _, exists := plan.Nodes[0].Properties["namespace"]; exists {
+		t.Fatalf("expected missing node label property to be omitted, got: %#v", plan.Nodes[0].Properties["namespace"])
+	}
+	if _, exists := plan.Relationships[0].Properties["missing_label"]; exists {
+		t.Fatalf("expected missing relationship label property to be omitted, got: %#v", plan.Relationships[0].Properties["missing_label"])
+	}
+}
+
 func float64Pointer(value float64) *float64 {
 	return &value
 }

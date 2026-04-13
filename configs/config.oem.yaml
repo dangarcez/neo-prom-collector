@@ -1,0 +1,51 @@
+prom_targets:
+  - name: prometheus_up_demo
+    base_url: http://host.docker.internal:8085
+    timeout_seconds: 10
+    verify_tls: true
+    runtime:
+      default_interval_seconds: 45
+      sleep_seconds: 1
+      dry_run: false
+    jobs:      
+      - name: targets_build
+        query: 'oem_monitor_stus{target_type="oracle_database"}'
+        interval_seconds: 30
+        nodes:
+          - types: 
+              - ORACLE_DATABASE
+            template_hashes:
+              - a6d3191603d5acf4
+            update_policy: merge_at_change
+            label_properties:
+              name: target_name
+              oracle_dbsys: oracle_dbsys
+              rac_database:  rac_database
+              host_name: machine_name          
+          - types: 
+              - ORACLE_HOST
+            template_hashes:
+              - 13596bb8099ef52b
+            update_policy: merge_at_change
+            label_properties:
+              name: machine_name
+            conditions:
+              - type: label_exists
+                label: machine_name
+
+        relationships:
+          - type: HOSTED_AT
+            template_hash: 588a2b70d54edced
+            source:
+              type: ORACLE_DATABASE
+              match_attributes:
+                labels:
+                  name: target_name
+            target:
+              type: ORACLE_HOST
+              match_attributes:
+                labels:
+                  name: machine_name            
+            conditions:
+              - type: label_exists
+                label: machine_name

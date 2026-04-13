@@ -165,7 +165,7 @@ Bloco: `prom_targets[].runtime`
 | Campo | Tipo | Obrigatorio | Default | Descricao |
 | --- | --- | --- | --- | --- |
 | `default_interval_seconds` | inteiro | nao | `60` | Intervalo padrao aplicado a jobs sem `interval_seconds` explicito. |
-| `sleep_seconds` | inteiro | nao | `0` | Pausa apos o processamento de cada datapoint. Pode ser usado para reduzir pressao no Neo4j. |
+| `sleep_seconds` | numero | nao | `0` | Pausa em segundos apos o processamento de cada datapoint. Aceita frações, como `0.25` ou `0.5`. |
 | `dry_run` | boolean | nao | `false` | Se `true`, consulta o Prometheus e monta os planos, mas nao grava no Neo4j. |
 
 ### Comportamento de `dry_run`
@@ -212,7 +212,7 @@ Cada template de node e avaliado contra cada datapoint retornado pela query do j
 | `type` | string | condicional | - | Alias para um unico tipo. |
 | `types` | lista de string | condicional | - | Lista de labels tecnicas do node. Deve haver ao menos uma. |
 | `template_hashes` | lista de string | sim | - | Lista de hashes de definicoes associados ao node. |
-| `update_policy` | string | nao | `create` | Politica de persistencia: `create` ou `merge`. |
+| `update_policy` | string | nao | `create` | Politica de persistencia: `create`, `merge` ou `merge_at_change`. |
 | `static_properties` | mapa | nao | `{}` | Propriedades literais copiadas para o node. |
 | `label_properties` | mapa string->string | nao | `{}` | Propriedades dinamicas resolvidas a partir de labels ou tokens especiais. |
 | `conditional_properties` | lista | nao | `[]` | Propriedades aplicadas apenas quando suas condicoes passam. |
@@ -278,7 +278,7 @@ Cada template de relacionamento e avaliado contra cada datapoint retornado pela 
 | `type` | string | sim | - | Tipo tecnico do relacionamento no Neo4j. |
 | `template_hash` | string | condicional | - | Hash canonico da definicao de relacionamento. |
 | `template_hashes` | lista de string | condicional | - | Alias aceito apenas quando houver um unico item; sera normalizado para `template_hash`. |
-| `update_policy` | string | nao | `create` | Politica de persistencia: `create` ou `merge`. |
+| `update_policy` | string | nao | `create` | Politica de persistencia: `create`, `merge` ou `merge_at_change`. |
 | `static_properties` | mapa | nao | `{}` | Propriedades literais do relacionamento. |
 | `label_properties` | mapa string->string | nao | `{}` | Propriedades dinamicas resolvidas do datapoint. |
 | `conditional_properties` | lista | nao | `[]` | Propriedades aplicadas apenas se as condicoes forem satisfeitas. |
@@ -336,6 +336,13 @@ Esses blocos definem como localizar os nodes ja existentes que receberao o relac
 | `match_attributes.labels` | mapa string->string | nao | Atributos resolvidos a partir de labels do datapoint. |
 
 Pelo menos um atributo de match deve existir entre `static` e `labels`.
+
+Comportamento de match:
+
+- se nenhum `source` ou nenhum `target` for encontrado, o relacionamento e ignorado
+- se houver multiplos `source` e multiplos `target`, o coletor cria o produto cartesiano entre eles
+- exemplo: `2 source x 3 target = 6` relacionamentos
+- a unica ambiguidade que continua sendo erro e encontrar mais de um relacionamento equivalente ja existente para o mesmo par `source-target`
 
 ### Exemplo
 
@@ -402,6 +409,13 @@ label_properties:
   metric_value: __value__
   observed_at: __timestamp__
 ```
+
+Se o token apontar para uma label ausente no datapoint:
+
+- em `label_properties`, a propriedade e simplesmente omitida
+- `__value__` e `__timestamp__` continuam obrigatoriamente resolviveis
+- em `conditional_properties` do tipo `label`, a propriedade tambem e omitida
+- essa tolerancia nao se aplica a `match_attributes.labels` de `source` e `target`
 
 ### `conditional_properties`
 
@@ -480,6 +494,26 @@ Exemplo:
 
 Se a label nao existir no datapoint, a condicao resulta em `false`.
 
+### Condicoes de existencia de label
+
+Campos suportados:
+
+| Campo | Obrigatorio | Observacao |
+| --- | --- | --- |
+| `type: label_exists` | sim | Verifica se a label existe no datapoint. |
+| `label` | sim | Nome da label que deve existir. |
+
+Esse tipo nao aceita operadores como `equals`, `not_equals`, `greater_than` ou `less_than`.
+
+Exemplo:
+
+```yaml
+- type: label_exists
+  label: namespace
+```
+
+Se a label existir no datapoint, a condicao resulta em `true`. Caso contrario, resulta em `false`.
+
 ### Condicoes de value
 
 Campos suportados:
@@ -517,6 +551,7 @@ Valores:
 
 - `create`
 - `merge`
+- `merge_at_change`
 
 ### Semantica
 
@@ -529,6 +564,13 @@ Valores:
 
 - cria quando nao existe
 - atualiza propriedades quando ja existe
+
+`merge_at_change`
+
+- cria quando nao existe
+- compara apenas os atributos definidos no YAML, ignorando campos automaticos
+- se nada mudou nos atributos de negocio, nao atualiza a entidade
+- se algo mudou, atualiza propriedades e renova `updated_at`
 
 Se o campo for omitido, o default e `create`.
 
@@ -550,6 +592,7 @@ Se o campo for omitido, o default e `create`.
 
 - `nodes[].type` e convertido para `nodes[].types` com um item
 - `relationships[].template_hashes` com um unico item e convertido para `template_hash`
+- `mergeAtChange` e `merge-at-change` sao aceitos como alias de `merge_at_change`
 - aliases legados de match sao incorporados em `match_attributes`
 - strings com espacos nas extremidades sao `trimadas` nos campos relevantes
 
@@ -571,7 +614,7 @@ O bootstrap falha antes de iniciar o scheduler quando encontrar erros como:
 - relacionamento sem `template_hash`
 - `source` ou `target` sem `type`
 - `source` ou `target` sem atributos de match
-- `update_policy` fora de `create` ou `merge`
+- `update_policy` fora de `create`, `merge` ou `merge_at_change`
 - condicoes com mais de um operador
 - `conditional_properties` sem `name`, `type` valido ou `conditions`
 
@@ -590,11 +633,11 @@ O parser aceita `template_hashes` apenas como alias para um unico valor. Para re
 
 ### 3. Referenciar labels inexistentes
 
-Se um token em `label_properties`, `from_label` ou `match_attributes.labels` apontar para uma label ausente no datapoint, o processamento daquele datapoint falha.
+Se um token em `label_properties` ou em `conditional_properties` do tipo `label` apontar para uma label ausente no datapoint, a propriedade e omitida. Ja em `match_attributes.labels`, a ausencia continua sendo erro de processamento.
 
 ### 4. Esperar criacao automatica de nodes a partir de relacionamento
 
-Relacionamentos dependem de `source` e `target` ja resolvidos. Se nenhum node for encontrado, o relacionamento e ignorado. Se mais de um node for encontrado, o processamento falha por ambiguidade.
+Relacionamentos dependem de `source` e `target` ja resolvidos. Se nenhum node for encontrado em um dos lados, o relacionamento e ignorado. Se houver multiplos matches em `source` ou `target`, o coletor cria todos os relacionamentos possiveis entre os pares encontrados.
 
 ## Exemplo de configuracao recomendada
 

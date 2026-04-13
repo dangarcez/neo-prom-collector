@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	driver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 
@@ -13,9 +14,11 @@ import (
 )
 
 type Repository struct {
-	driver   driver.DriverWithContext
-	database string
-	logger   *slog.Logger
+	driver            driver.DriverWithContext
+	database          string
+	logger            *slog.Logger
+	nodeLocks         sync.Map
+	relationshipLocks sync.Map
 }
 
 func NewRepository(ctx context.Context, env config.EnvConfig, logger *slog.Logger) (*Repository, error) {
@@ -78,11 +81,11 @@ func (r *Repository) ApplyPlan(ctx context.Context, plan domain.MutationPlan) (d
 		}
 
 		for _, relationship := range plan.Relationships {
-			action, err := r.applyRelationship(ctx, tx, relationship)
+			relationshipStats, err := r.applyRelationship(ctx, tx, relationship)
 			if err != nil {
 				return stats, err
 			}
-			stats.AddRelationship(action)
+			stats.Merge(relationshipStats)
 		}
 
 		return stats, nil

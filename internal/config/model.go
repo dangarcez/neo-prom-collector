@@ -80,9 +80,9 @@ func (t PromTargetConfig) VerifyTLSEnabled() bool {
 }
 
 type TargetRuntimeConfig struct {
-	DefaultIntervalSeconds int  `yaml:"default_interval_seconds"`
-	SleepSeconds           int  `yaml:"sleep_seconds"`
-	DryRun                 bool `yaml:"dry_run"`
+	DefaultIntervalSeconds int     `yaml:"default_interval_seconds"`
+	SleepSeconds           float64 `yaml:"sleep_seconds"`
+	DryRun                 bool    `yaml:"dry_run"`
 }
 
 type JobConfig struct {

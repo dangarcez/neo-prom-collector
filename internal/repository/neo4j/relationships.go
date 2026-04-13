@@ -11,30 +11,58 @@ import (
 	"neo_collector_go/internal/domain"
 )
 
-func (r *Repository) applyRelationship(ctx context.Context, tx driver.ManagedTransaction, relationship domain.GraphRelationship) (domain.PersistAction, error) {
-	sourceIDs, err := r.findSelectorMatches(ctx, tx, relationship.Source)
+type matchedNode struct {
+	ElementID string
+	UID       string
+}
+
+func (r *Repository) applyRelationship(ctx context.Context, tx driver.ManagedTransaction, relationship domain.GraphRelationship) (domain.ApplyStats, error) {
+	sourceMatches, err := r.findSelectorMatches(ctx, tx, relationship.Source)
 	if err != nil {
-		return "", err
+		return domain.ApplyStats{}, err
 	}
-	if len(sourceIDs) == 0 {
-		return domain.PersistActionSkipped, nil
-	}
-	if len(sourceIDs) > 1 {
-		return "", fmt.Errorf("%w for relationship source %q", domain.ErrAmbiguousNodeMatch, relationship.Source.Type)
+	if len(sourceMatches) == 0 {
+		stats := domain.ApplyStats{}
+		stats.AddRelationship(domain.PersistActionSkipped)
+		return stats, nil
 	}
 
-	targetIDs, err := r.findSelectorMatches(ctx, tx, relationship.Target)
+	targetMatches, err := r.findSelectorMatches(ctx, tx, relationship.Target)
 	if err != nil {
-		return "", err
+		return domain.ApplyStats{}, err
 	}
-	if len(targetIDs) == 0 {
-		return domain.PersistActionSkipped, nil
-	}
-	if len(targetIDs) > 1 {
-		return "", fmt.Errorf("%w for relationship target %q", domain.ErrAmbiguousNodeMatch, relationship.Target.Type)
+	if len(targetMatches) == 0 {
+		stats := domain.ApplyStats{}
+		stats.AddRelationship(domain.PersistActionSkipped)
+		return stats, nil
 	}
 
-	existingCount, err := r.countRelationshipsByIdentity(ctx, tx, sourceIDs[0], targetIDs[0], relationship)
+	stats := domain.ApplyStats{}
+	for _, sourceMatch := range sourceMatches {
+		for _, targetMatch := range targetMatches {
+			action, err := r.applyRelationshipMatch(ctx, tx, relationship, sourceMatch, targetMatch)
+			if err != nil {
+				return domain.ApplyStats{}, err
+			}
+			stats.AddRelationship(action)
+		}
+	}
+
+	return stats, nil
+}
+
+func (r *Repository) applyRelationshipMatch(
+	ctx context.Context,
+	tx driver.ManagedTransaction,
+	relationship domain.GraphRelationship,
+	sourceMatch matchedNode,
+	targetMatch matchedNode,
+) (domain.PersistAction, error) {
+	relationship = relationshipForMatch(relationship, sourceMatch, targetMatch)
+	unlock := r.lockRelationship(relationship)
+	defer unlock()
+
+	existingCount, err := r.countRelationshipsByIdentity(ctx, tx, sourceMatch.ElementID, targetMatch.ElementID, relationship)
 	if err != nil {
 		return "", err
 	}
@@ -49,18 +77,32 @@ func (r *Repository) applyRelationship(ctx context.Context, tx driver.ManagedTra
 		if existingCount > 0 {
 			return domain.PersistActionSkipped, nil
 		}
-		return r.createRelationship(ctx, tx, sourceIDs[0], targetIDs[0], relationship, now)
+		return r.createRelationship(ctx, tx, sourceMatch.ElementID, targetMatch.ElementID, relationship, now)
 	case domain.UpdatePolicyMerge:
 		if existingCount == 0 {
-			return r.createRelationship(ctx, tx, sourceIDs[0], targetIDs[0], relationship, now)
+			return r.createRelationship(ctx, tx, sourceMatch.ElementID, targetMatch.ElementID, relationship, now)
 		}
-		return r.updateRelationship(ctx, tx, sourceIDs[0], targetIDs[0], relationship, now)
+		return r.updateRelationship(ctx, tx, sourceMatch.ElementID, targetMatch.ElementID, relationship, now)
+	case domain.UpdatePolicyMergeAtChange:
+		if existingCount == 0 {
+			return r.createRelationship(ctx, tx, sourceMatch.ElementID, targetMatch.ElementID, relationship, now)
+		}
+
+		existingProperties, err := r.loadRelationshipPropertiesByIdentity(ctx, tx, sourceMatch.ElementID, targetMatch.ElementID, relationship)
+		if err != nil {
+			return "", err
+		}
+		if !shouldUpdateProperties(existingProperties, managedRelationshipProperties(relationship)) {
+			return domain.PersistActionSkipped, nil
+		}
+
+		return r.updateRelationship(ctx, tx, sourceMatch.ElementID, targetMatch.ElementID, relationship, now)
 	default:
 		return "", fmt.Errorf("unsupported relationship update policy %q", relationship.UpdatePolicy)
 	}
 }
 
-func (r *Repository) findSelectorMatches(ctx context.Context, tx driver.ManagedTransaction, selector domain.NodeSelector) ([]string, error) {
+func (r *Repository) findSelectorMatches(ctx context.Context, tx driver.ManagedTransaction, selector domain.NodeSelector) ([]matchedNode, error) {
 	labels, err := labelsFragment([]string{selector.Type})
 	if err != nil {
 		return nil, err
@@ -75,14 +117,14 @@ func (r *Repository) findSelectorMatches(ctx context.Context, tx driver.ManagedT
 	if whereClause != "" {
 		query += " WHERE " + whereClause
 	}
-	query += " RETURN elementId(n) AS element_id LIMIT 2"
+	query += " RETURN elementId(n) AS element_id, n.node_uid AS node_uid ORDER BY coalesce(n.node_uid, elementId(n))"
 
 	result, err := tx.Run(ctx, query, params)
 	if err != nil {
 		return nil, fmt.Errorf("run selector query: %w", err)
 	}
 
-	ids := []string{}
+	matches := []matchedNode{}
 	for result.Next(ctx) {
 		value, ok := result.Record().Get("element_id")
 		if !ok {
@@ -94,14 +136,26 @@ func (r *Repository) findSelectorMatches(ctx context.Context, tx driver.ManagedT
 			return nil, fmt.Errorf("selector element_id has unexpected type %T", value)
 		}
 
-		ids = append(ids, id)
+		nodeUID := ""
+		if uidValue, ok := result.Record().Get("node_uid"); ok && uidValue != nil {
+			typedUID, ok := uidValue.(string)
+			if !ok {
+				return nil, fmt.Errorf("selector node_uid has unexpected type %T", uidValue)
+			}
+			nodeUID = typedUID
+		}
+
+		matches = append(matches, matchedNode{
+			ElementID: id,
+			UID:       nodeUID,
+		})
 	}
 
 	if err := result.Err(); err != nil {
 		return nil, fmt.Errorf("consume selector query: %w", err)
 	}
 
-	return ids, nil
+	return matches, nil
 }
 
 func (r *Repository) countRelationshipsByIdentity(
@@ -167,6 +221,61 @@ RETURN 'created' AS action
 		"target_id":  targetID,
 		"properties": properties,
 	})
+}
+
+func (r *Repository) loadRelationshipPropertiesByIdentity(
+	ctx context.Context,
+	tx driver.ManagedTransaction,
+	sourceID string,
+	targetID string,
+	relationship domain.GraphRelationship,
+) (map[string]any, error) {
+	relationshipType, err := sanitizeIdentifier(relationship.Type)
+	if err != nil {
+		return nil, err
+	}
+
+	templateHashes := relationshipTemplateHashes(relationship)
+
+	query := fmt.Sprintf(`
+MATCH (source) WHERE elementId(source) = $source_id
+MATCH (target) WHERE elementId(target) = $target_id
+MATCH (source)-[rel:%s {template_hashes: $template_hashes}]->(target)
+RETURN properties(rel) AS properties
+LIMIT 1
+`, relationshipType)
+
+	result, err := tx.Run(ctx, query, map[string]any{
+		"source_id":       sourceID,
+		"target_id":       targetID,
+		"template_hashes": templateHashes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("run relationship properties query: %w", err)
+	}
+
+	if !result.Next(ctx) {
+		if err := result.Err(); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("relationship properties query returned no rows")
+	}
+
+	value, ok := result.Record().Get("properties")
+	if !ok {
+		return nil, fmt.Errorf("relationship properties query did not return properties")
+	}
+
+	properties, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("relationship properties have unexpected type %T", value)
+	}
+
+	if err := result.Err(); err != nil {
+		return nil, err
+	}
+
+	return properties, nil
 }
 
 func (r *Repository) updateRelationship(

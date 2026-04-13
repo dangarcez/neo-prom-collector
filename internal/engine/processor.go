@@ -148,15 +148,20 @@ func (p *Processor) processDatapoint(
 	return applyStats, nil
 }
 
-func sleepIfNeeded(ctx context.Context, seconds int) error {
+func sleepIfNeeded(ctx context.Context, seconds float64) error {
 	if seconds <= 0 {
+		return nil
+	}
+
+	duration := time.Duration(seconds * float64(time.Second))
+	if duration <= 0 {
 		return nil
 	}
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(time.Duration(seconds) * time.Second):
+	case <-time.After(duration):
 		return nil
 	}
 }

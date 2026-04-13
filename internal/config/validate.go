@@ -241,6 +241,27 @@ func validateCondition(path string, condition ConditionConfig) error {
 		if operatorCount != 1 {
 			return fmt.Errorf("%s label conditions require exactly one operator", path)
 		}
+	case "label_exists":
+		if strings.TrimSpace(condition.Label) == "" {
+			return fmt.Errorf("%s.label is required for label_exists conditions", path)
+		}
+
+		operatorCount := 0
+		if condition.Equals != nil {
+			operatorCount++
+		}
+		if condition.NotEquals != nil {
+			operatorCount++
+		}
+		if condition.GreaterThan != nil {
+			operatorCount++
+		}
+		if condition.LessThan != nil {
+			operatorCount++
+		}
+		if operatorCount != 0 {
+			return fmt.Errorf("%s label_exists conditions do not accept operators", path)
+		}
 	case "value":
 		operatorCount := 0
 		if condition.Equals != nil {
@@ -259,7 +280,7 @@ func validateCondition(path string, condition ConditionConfig) error {
 			return fmt.Errorf("%s value conditions require exactly one operator", path)
 		}
 	default:
-		return fmt.Errorf("%s.type must be label or value", path)
+		return fmt.Errorf("%s.type must be label, label_exists or value", path)
 	}
 
 	return nil
@@ -267,9 +288,9 @@ func validateCondition(path string, condition ConditionConfig) error {
 
 func validateUpdatePolicy(path, value string) error {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "create", "merge":
+	case "", "create", "merge", "merge_at_change", "mergeatchange", "merge-at-change":
 		return nil
 	default:
-		return fmt.Errorf("%s must be create or merge", path)
+		return fmt.Errorf("%s must be create, merge or merge_at_change", path)
 	}
 }

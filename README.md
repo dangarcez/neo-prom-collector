@@ -10,7 +10,7 @@ Automacao em Go para consultar Prometheus periodicamente e criar ou atualizar no
 - processamento isolado de cada datapoint
 - limite configuravel de concorrencia no processamento de datapoints
 - criacao e atualizacao de nodes e relacionamentos no Neo4j
-- suporte a `update_policy` `create` e `merge`
+- suporte a `update_policy` `create`, `merge` e `merge_at_change`
 - modo `dry_run` por target
 - logs em `text` por default (ou `json` via `APP_LOG_FORMAT`)
 

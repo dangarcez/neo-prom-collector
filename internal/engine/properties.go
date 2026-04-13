@@ -18,9 +18,12 @@ func ResolveProperties(
 	properties := cloneMap(staticProperties)
 
 	for propertyName, sourceToken := range dynamicProperties {
-		resolved, err := ResolveToken(sourceToken, datapoint)
+		resolved, found, err := ResolveOptionalToken(sourceToken, datapoint)
 		if err != nil {
 			return nil, fmt.Errorf("resolve dynamic property %q: %w", propertyName, err)
+		}
+		if !found {
+			continue
 		}
 		properties[propertyName] = resolved
 	}
@@ -38,9 +41,12 @@ func ResolveProperties(
 		case "static":
 			properties[property.Name] = property.Value
 		case "label":
-			resolved, err := ResolveToken(property.FromLabel, datapoint)
+			resolved, found, err := ResolveOptionalToken(property.FromLabel, datapoint)
 			if err != nil {
 				return nil, fmt.Errorf("resolve conditional property %q: %w", property.Name, err)
+			}
+			if !found {
+				continue
 			}
 			properties[property.Name] = resolved
 		default:
@@ -68,19 +74,30 @@ func ResolveSelector(endpoint config.RelationshipEndpointConfig, datapoint domai
 	}, nil
 }
 
-func ResolveToken(sourceToken string, datapoint domain.Datapoint) (any, error) {
+func ResolveOptionalToken(sourceToken string, datapoint domain.Datapoint) (any, bool, error) {
 	switch sourceToken {
 	case "__value__":
-		return datapoint.Value, nil
+		return datapoint.Value, true, nil
 	case "__timestamp__":
-		return datapoint.Timestamp.UTC().Format(time.RFC3339), nil
+		return datapoint.Timestamp.UTC().Format(time.RFC3339), true, nil
 	default:
 		value, ok := datapoint.Labels[sourceToken]
 		if !ok {
-			return nil, fmt.Errorf("label %q was not found in datapoint", sourceToken)
+			return nil, false, nil
 		}
-		return value, nil
+		return value, true, nil
 	}
+}
+
+func ResolveToken(sourceToken string, datapoint domain.Datapoint) (any, error) {
+	value, found, err := ResolveOptionalToken(sourceToken, datapoint)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("label %q was not found in datapoint", sourceToken)
+	}
+	return value, nil
 }
 
 func cloneMap(input map[string]any) map[string]any {

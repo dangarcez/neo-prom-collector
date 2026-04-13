@@ -65,6 +65,7 @@ Revise:
 - criterio de identidade por `type` e `name` nos nodes
 - `template_hashes` do relacionamento
 - match de `source` e `target`
+- selectors muito amplos podem gerar fan-out e criar muitos relacionamentos
 
 ## Logs ajudam a diagnosticar
 

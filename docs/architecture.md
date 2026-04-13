@@ -20,7 +20,7 @@ O PRD, o guia `ingestao-automatica.md` e o `config.demo.yaml` têm pequenas inco
 - todo node recebe a label base `Entity`
 - `origin` deve ser sempre `"auto"`
 - `created_at` e `updated_at` devem ser gravados em ISO 8601 UTC
-- `update_policy` aceita `create` e `merge`, com `create` como default
+- `update_policy` aceita `create`, `merge` e `merge_at_change`, com `create` como default
 - a configuração YAML deve normalizar `type` e `types` para um campo interno único
 - typos do YAML de exemplo, como `greaterThen`, devem ser tratados como inválidos na validação
 
@@ -172,9 +172,10 @@ Executa as operações de persistência com transação, obedecendo as regras:
 - node primeiro
 - relacionamento depois
 - relacionamento nunca cria node
-- `merge` atualiza
+- `merge` sempre atualiza quando a entidade já existe
+- `merge_at_change` só atualiza quando algum atributo de negócio vindo do YAML mudou
 - `create` só insere se não existir
-- `updated_at` sempre muda em mutações
+- `updated_at` só muda quando há mutação real
 
 ### `internal/observability`
 
@@ -202,17 +203,18 @@ Centraliza logs estruturados, métricas operacionais e eventualmente health chec
 1. O engine avalia as condições dos nodes.
 2. Para cada node elegível, resolve propriedades, injeta campos automáticos, calcula `node_uid` e gera o plano de persistência.
 3. O engine avalia as condições dos relacionamentos.
-4. Para cada relacionamento elegível, resolve source e target, resolve propriedades, calcula `rel_uid` e gera o plano de persistência sem criar nodes.
+4. Para cada relacionamento elegível, resolve selectors e propriedades, e gera o plano de persistência sem criar nodes.
 
 ### 4. Persistência no Neo4j
 
 1. Os nodes do datapoint são persistidos primeiro.
 2. O repositório verifica existência por identidade de negócio.
-3. Aplica `create` ou `merge`.
+3. Aplica `create`, `merge` ou `merge_at_change`.
 4. Os relacionamentos são persistidos em seguida.
 5. Source e target são localizados por tipo e atributos definidos na configuração.
 6. Se um dos lados não existir, o relacionamento é ignorado.
-7. Se houver ambiguidade de match em source ou target, o datapoint falha e é logado como erro de regra.
+7. Se houver múltiplos matches em source ou target, o repositório cria o produto cartesiano entre eles.
+8. Se já existirem múltiplos relacionamentos equivalentes para o mesmo par source-target, a aplicação falha aquele datapoint por inconsistência de identidade.
 
 ### 5. Observabilidade
 
@@ -257,9 +259,9 @@ Isso evita duplicação entre execuções e mantém a exigência de estabilidade
 
 O PRD determina que relacionamentos não criem nodes. Logo, a ordem de persistência precisa respeitar dependência explícita.
 
-### 7. Usar `MERGE` com critério de negócio e `CREATE` para política estrita
+### 7. Usar políticas explícitas de persistência
 
-Para `merge`, o repositório faz upsert com atualização de propriedades e `updated_at`. Para `create`, faz verificação prévia e não altera registros existentes. Isso materializa exatamente a política pedida no PRD.
+Para `create`, o repositório faz verificação prévia e não altera registros existentes. Para `merge`, faz upsert e sempre renova `updated_at` quando a entidade já existe. Para `merge_at_change`, compara apenas os atributos vindos do YAML e só atualiza quando houver mudança real de negócio. Isso evita churn artificial de `updated_at` sem perder o comportamento antigo de `merge`.
 
 ### 8. Validar configuração no startup
 
@@ -280,9 +282,9 @@ A decisão reduz risco de incompatibilidade, simplifica manutenção e melhora s
 
 Cada job pode rodar em sua própria goroutine, mas o processamento de datapoints deve passar por pool limitado. Isso mantém escalabilidade sem saturar Neo4j ou Prometheus quando houver queries volumosas.
 
-### 12. Tratamento explícito de ambiguidades
+### 12. Tratamento explícito de ambiguidades de identidade
 
-Se a configuração de match de source ou target encontrar mais de um node, o sistema não deve escolher arbitrariamente. A decisão correta é falhar aquele relacionamento e registrar erro, preservando integridade do grafo.
+Múltiplos matches em source e target são tratados como fan-out controlado, gerando todos os pares possíveis. A ambiguidade que continua sendo erro é encontrar mais de um relacionamento equivalente para o mesmo par source-target e mesmo `template_hashes`, porque isso indica identidade inconsistente no grafo.
 
 ## Contrato interno sugerido
 
@@ -292,7 +294,7 @@ Se a configuração de match de source ou target encontrar mais de um node, o si
 NodeTemplate
 - Types []string
 - TemplateHashes []string
-- UpdatePolicy create|merge
+- UpdatePolicy create|merge|merge_at_change
 - StaticProperties map[string]any
 - DynamicProperties []DynamicProperty
 - ConditionalProperties []ConditionalProperty
@@ -305,7 +307,7 @@ NodeTemplate
 RelationshipTemplate
 - Type string
 - TemplateHash string
-- UpdatePolicy create|merge
+- UpdatePolicy create|merge|merge_at_change
 - Source NodeSelector
 - Target NodeSelector
 - StaticProperties map[string]any
@@ -355,7 +357,7 @@ Campos automáticos:
 - cada node deve ter ao menos um `template_hashes`
 - cada relacionamento deve ter `type`, `template_hash` (na config), `source` e `target`
 - source e target devem ter `type` e pelo menos um atributo de match
-- operadores válidos para label: `equals`, `not_equals`
+- tipos válidos de condição por label: `label` com `equals` ou `not_equals`, e `label_exists`
 - operadores válidos para value: `equals`, `not_equals`, `greater_than`, `less_than`
 - aliases internos como `__value__` e `__timestamp__` são reservados
 

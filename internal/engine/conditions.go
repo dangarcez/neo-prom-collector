@@ -40,6 +40,9 @@ func matchCondition(condition config.ConditionConfig, datapoint domain.Datapoint
 		}
 
 		return false, fmt.Errorf("unsupported label condition")
+	case "label_exists":
+		_, ok := datapoint.Labels[condition.Label]
+		return ok, nil
 	case "value":
 		if condition.Equals != nil {
 			expected, err := toFloat64(condition.Equals)

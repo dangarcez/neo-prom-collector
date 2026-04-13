@@ -77,3 +77,78 @@ func TestResolveProperties(t *testing.T) {
 		t.Fatalf("expected __timestamp__ to resolve, got: %#v", properties["timestamp"])
 	}
 }
+
+func TestResolvePropertiesSkipsMissingLabelProperties(t *testing.T) {
+	datapoint := domain.Datapoint{
+		Labels: map[string]string{
+			"pod": "api-0",
+		},
+		Value:     1,
+		Timestamp: time.Date(2026, 4, 11, 15, 4, 5, 0, time.UTC),
+	}
+
+	properties, err := ResolveProperties(
+		map[string]any{
+			"kind": "pod",
+		},
+		map[string]string{
+			"name":      "pod",
+			"namespace": "namespace",
+		},
+		nil,
+		datapoint,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if properties["name"] != "api-0" {
+		t.Fatalf("expected name to be resolved, got: %#v", properties["name"])
+	}
+	if _, exists := properties["namespace"]; exists {
+		t.Fatalf("expected missing label property to be omitted, got: %#v", properties["namespace"])
+	}
+}
+
+func TestResolvePropertiesSkipsMissingConditionalLabelProperty(t *testing.T) {
+	datapoint := domain.Datapoint{
+		Labels: map[string]string{
+			"pod":   "api-0",
+			"stage": "prod",
+		},
+		Value:     1,
+		Timestamp: time.Date(2026, 4, 11, 15, 4, 5, 0, time.UTC),
+	}
+
+	properties, err := ResolveProperties(
+		nil,
+		map[string]string{
+			"name": "pod",
+		},
+		[]config.ConditionalPropertyConfig{
+			{
+				Type:      "label",
+				Name:      "team",
+				FromLabel: "owner_team",
+				Conditions: []config.ConditionConfig{
+					{
+						Type:   "label",
+						Label:  "stage",
+						Equals: "prod",
+					},
+				},
+			},
+		},
+		datapoint,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if properties["name"] != "api-0" {
+		t.Fatalf("expected name to be resolved, got: %#v", properties["name"])
+	}
+	if _, exists := properties["team"]; exists {
+		t.Fatalf("expected missing conditional label property to be omitted, got: %#v", properties["team"])
+	}
+}

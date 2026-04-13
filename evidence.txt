@@ -1,0 +1,87 @@
+Investigation Date: 2026-04-13
+Repo Config Used: configs/config.oem.yaml
+
+Summary
+- There is a real duplicate in Neo4j for ORACLE_HOST `cadecrk01cl01vm03`.
+- The duplicate rows have the same `name`, the same `node_uid`, and the same `created_at`.
+- The duplicate timestamp matches the start time of the running Podman container `neo-collector`.
+- There is a running Podman container `neo-collector` created from image `localhost/neo_prom_collector:latest`.
+- That container started before the latest source change in this workspace was applied, so the current duplicate does not prove the new source fix is running in production.
+
+Strongest Conclusion
+- The duplicate was created by the currently running Podman container at startup time.
+- Most likely reason: the running container image was not rebuilt/restarted from the latest source tree after the deduplication change.
+- Secondary possibility: more than one collector instance wrote concurrently at creation time. I did not find a second local process, but Podman is definitely writing.
+
+Neo4j Evidence
+Command:
+docker exec neo4j cypher-shell -u neo4j -p senha123 "MATCH (n:Entity:ORACLE_HOST) WITH n.name AS name, n.node_uid AS node_uid, collect(elementId(n)) AS element_ids, count(*) AS copies WHERE copies > 1 RETURN name, node_uid, copies, element_ids ORDER BY copies DESC, name"
+
+Result:
+name, node_uid, copies, element_ids
+"cadecrk01cl01vm03", "27933f3e-2bc1-5383-b673-31e5a8d87433", 2, ["4:75231a26-1206-4fe9-97af-fa82177d94d4:11", "4:75231a26-1206-4fe9-97af-fa82177d94d4:14"]
+
+Command:
+docker exec neo4j cypher-shell -u neo4j -p senha123 "MATCH (n:Entity:ORACLE_HOST {name: 'cadecrk01cl01vm03'}) RETURN n.name AS name, n.node_uid AS node_uid, n.created_at AS created_at, n.updated_at AS updated_at, elementId(n) AS element_id ORDER BY element_id"
+
+Result:
+name, node_uid, created_at, updated_at, element_id
+"cadecrk01cl01vm03", "27933f3e-2bc1-5383-b673-31e5a8d87433", "2026-04-13T04:12:17Z", "2026-04-13T04:12:17Z", "4:75231a26-1206-4fe9-97af-fa82177d94d4:11"
+"cadecrk01cl01vm03", "27933f3e-2bc1-5383-b673-31e5a8d87433", "2026-04-13T04:12:17Z", "2026-04-13T04:12:17Z", "4:75231a26-1206-4fe9-97af-fa82177d94d4:14"
+
+Podman Collector Evidence
+Command:
+podman inspect neo-collector --format '{{.ImageName}} | {{.Created}} | {{.State.StartedAt}} | {{.Config.Cmd}}'
+
+Result:
+localhost/neo_prom_collector:latest | 2026-04-13 01:12:16.194260247 -0300 -03 | 2026-04-13 01:12:17.56009553 -0300 -03 | [--config /app/configs/config.oem.yaml]
+
+Temporal Correlation
+- Duplicate ORACLE_HOST nodes were created at: `2026-04-13T04:12:17Z`
+- Podman container started at: `2026-04-13 01:12:17 -0300`
+- These timestamps refer to the same instant.
+
+Collector Log Evidence
+Command:
+podman logs --tail 50 neo-collector
+
+Relevant lines:
+2026-04-13T04:19:12Z INFO job processing summary target=prometheus_up_demo job=targets_build datapoints=62 errors=49 nodes_created=0 nodes_updated=0 nodes_skipped=22 relationships_created=0 relationships_updated=0 relationships_skipped=9 workers=4 dry_run=false
+2026-04-13T04:19:12Z ERROR job execution failed target=prometheus_up_demo job=targets_build duration=4.078361839s error=apply datapoint 2: ambiguous node match for node "cadecrk01cl01vm03"
+
+Interpretation:
+- The duplicate already exists in Neo4j.
+- Current runs are now failing on that host because two nodes with the same identity are present.
+
+Prometheus Sample
+Original query from config:
+oem_monitor_stus{target_type="oracle_database"}
+
+Focused query used for evidence:
+oem_monitor_stus{target_type="oracle_database",machine_name="cadecrk01cl01vm03"}
+
+Count of matching series:
+49
+
+Command:
+podman exec prometheus wget -qO- 'http://127.0.0.1:9090/api/v1/query?query=oem_monitor_stus%7Btarget_type%3D%22oracle_database%22%2Cmachine_name%3D%22cadecrk01cl01vm03%22%7D'
+
+Sample result excerpt:
+{"status":"success","data":{"resultType":"vector","result":[
+{"metric":{"machine_name":"cadecrk01cl01vm03","target_name":"occp50bc_occp50bc2","target_type":"oracle_database"},"value":[1776053994.414,"2"]},
+{"metric":{"machine_name":"cadecrk01cl01vm03","target_name":"occs50bc_occs50bc2","target_type":"oracle_database"},"value":[1776053994.414,"2"]},
+{"metric":{"machine_name":"cadecrk01cl01vm03","target_name":"cdbp11bc_cdbp11bc2","target_type":"oracle_database"},"value":[1776053994.414,"2"]},
+{"metric":{"machine_name":"cadecrk01cl01vm03","target_name":"cdbp51bc_cdbp51bc3","target_type":"oracle_database"},"value":[1776053994.414,"2"]},
+{"metric":{"machine_name":"cadecrk01cl01vm03","target_name":"cdbs54ng_cdbs54ng2","target_type":"oracle_database"},"value":[1776053994.414,"2"]}
+...]}}
+
+Why this matters
+- The same `machine_name` appears in many datapoints.
+- That means many datapoints try to materialize the same `ORACLE_HOST`.
+- If the running container does not include the latest deduplication fix, this is exactly the workload pattern that creates the duplicate.
+
+Current Best Assessment
+1. The duplicate is real and reproducible in the database.
+2. It was created at the same moment the Podman `neo-collector` container started.
+3. The currently running container is the most likely writer.
+4. To test the latest source fix, the container image must be rebuilt and restarted from the current workspace.

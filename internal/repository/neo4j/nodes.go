@@ -11,6 +11,9 @@ import (
 )
 
 func (r *Repository) applyNode(ctx context.Context, tx driver.ManagedTransaction, node domain.GraphNode) (domain.PersistAction, error) {
+	unlock := r.lockNode(node)
+	defer unlock()
+
 	existingCount, err := r.countNodesByIdentity(ctx, tx, node)
 	if err != nil {
 		return "", err
@@ -34,6 +37,23 @@ func (r *Repository) applyNode(ctx context.Context, tx driver.ManagedTransaction
 		if existingCount > 1 {
 			return "", fmt.Errorf("%w for node %q", domain.ErrAmbiguousNodeMatch, node.Name)
 		}
+		return r.updateNode(ctx, tx, node, now)
+	case domain.UpdatePolicyMergeAtChange:
+		if existingCount == 0 {
+			return r.createNode(ctx, tx, node, now)
+		}
+		if existingCount > 1 {
+			return "", fmt.Errorf("%w for node %q", domain.ErrAmbiguousNodeMatch, node.Name)
+		}
+
+		existingProperties, err := r.loadNodePropertiesByIdentity(ctx, tx, node)
+		if err != nil {
+			return "", err
+		}
+		if !shouldUpdateProperties(existingProperties, managedNodeProperties(node)) {
+			return domain.PersistActionSkipped, nil
+		}
+
 		return r.updateNode(ctx, tx, node, now)
 	default:
 		return "", fmt.Errorf("unsupported node update policy %q", node.UpdatePolicy)
@@ -80,6 +100,52 @@ func (r *Repository) createNode(ctx context.Context, tx driver.ManagedTransactio
 		"name":       node.Name,
 		"properties": properties,
 	})
+}
+
+func (r *Repository) loadNodePropertiesByIdentity(
+	ctx context.Context,
+	tx driver.ManagedTransaction,
+	node domain.GraphNode,
+) (map[string]any, error) {
+	labels, err := labelsFragment(node.Types)
+	if err != nil {
+		return nil, err
+	}
+
+	query := fmt.Sprintf(
+		"MATCH (n%s {name: $name}) RETURN properties(n) AS properties LIMIT 1",
+		labels,
+	)
+
+	result, err := tx.Run(ctx, query, map[string]any{
+		"name": node.Name,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("run node properties query: %w", err)
+	}
+
+	if !result.Next(ctx) {
+		if err := result.Err(); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("node properties query returned no rows")
+	}
+
+	value, ok := result.Record().Get("properties")
+	if !ok {
+		return nil, fmt.Errorf("node properties query did not return properties")
+	}
+
+	properties, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("node properties have unexpected type %T", value)
+	}
+
+	if err := result.Err(); err != nil {
+		return nil, err
+	}
+
+	return properties, nil
 }
 
 func (r *Repository) updateNode(ctx context.Context, tx driver.ManagedTransaction, node domain.GraphNode, now string) (domain.PersistAction, error) {
