@@ -11,9 +11,6 @@ import (
 )
 
 func (r *Repository) applyNode(ctx context.Context, tx driver.ManagedTransaction, node domain.GraphNode) (domain.PersistAction, error) {
-	unlock := r.lockNode(node)
-	defer unlock()
-
 	existingCount, err := r.countNodesByIdentity(ctx, tx, node)
 	if err != nil {
 		return "", err

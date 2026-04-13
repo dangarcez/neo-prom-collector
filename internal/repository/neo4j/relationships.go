@@ -59,8 +59,6 @@ func (r *Repository) applyRelationshipMatch(
 	targetMatch matchedNode,
 ) (domain.PersistAction, error) {
 	relationship = relationshipForMatch(relationship, sourceMatch, targetMatch)
-	unlock := r.lockRelationship(relationship)
-	defer unlock()
 
 	existingCount, err := r.countRelationshipsByIdentity(ctx, tx, sourceMatch.ElementID, targetMatch.ElementID, relationship)
 	if err != nil {

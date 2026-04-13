@@ -64,6 +64,9 @@ func (r *Repository) ApplyPlan(ctx context.Context, plan domain.MutationPlan) (d
 		return domain.ApplyStats{}, fmt.Errorf("neo4j repository is not initialized")
 	}
 
+	unlock := r.lockPlan(plan)
+	defer unlock()
+
 	session := r.driver.NewSession(ctx, driver.SessionConfig{
 		DatabaseName: r.database,
 	})

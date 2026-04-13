@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -372,6 +373,96 @@ RETURN count(DISTINCT r.rel_uid) AS count
 	})
 	if distinctUIDCount != 6 {
 		t.Fatalf("expected 6 distinct relationship rel_uid values, got %d", distinctUIDCount)
+	}
+}
+
+func TestRepositoryApplyPlanDoesNotDuplicateNodeUnderConcurrentWrites(t *testing.T) {
+	tc.SkipIfProviderIsNotHealthy(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	neoContainer, neo4jURI := startNeo4jContainer(ctx, t)
+	defer terminateContainer(context.Background(), t, neoContainer)
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repository := waitForNeo4jRepository(ctx, t, config.EnvConfig{
+		Neo4jURI:           neo4jURI,
+		Neo4jDatabase:      "neo4j",
+		Neo4jUsername:      "neo4j",
+		Neo4jPassword:      neo4jPassword,
+		Neo4jTimeout:       5 * time.Second,
+		VerifyConnectivity: true,
+	}, logger)
+	defer func() {
+		if err := repository.Close(context.Background()); err != nil {
+			t.Fatalf("close repository: %v", err)
+		}
+	}()
+
+	plan := domain.MutationPlan{
+		Nodes: []domain.GraphNode{
+			{
+				Types:          []string{"ConcurrentHost"},
+				Name:           "cadecrk01cl01vm03",
+				TemplateHashes: []string{"host-v1"},
+				UpdatePolicy:   domain.UpdatePolicyMergeAtChange,
+				Properties: map[string]any{
+					"name":            "cadecrk01cl01vm03",
+					"node_uid":        "27933f3e-2bc1-5383-b673-31e5a8d87433",
+					"template_hashes": []string{"host-v1"},
+					"origin":          "auto",
+				},
+				UID: "27933f3e-2bc1-5383-b673-31e5a8d87433",
+			},
+		},
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for index := 0; index < 8; index++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := repository.ApplyPlan(ctx, plan)
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent apply failed: %v", err)
+		}
+	}
+
+	neo4jDriver, err := driver.NewDriverWithContext(neo4jURI, driver.BasicAuth("neo4j", neo4jPassword, ""))
+	if err != nil {
+		t.Fatalf("create verification driver: %v", err)
+	}
+	defer func() {
+		if err := neo4jDriver.Close(ctx); err != nil {
+			t.Fatalf("close verification driver: %v", err)
+		}
+	}()
+
+	session := neo4jDriver.NewSession(ctx, driver.SessionConfig{DatabaseName: "neo4j"})
+	defer func() {
+		if err := session.Close(ctx); err != nil {
+			t.Fatalf("close verification session: %v", err)
+		}
+	}()
+
+	count := readCount(ctx, t, session, `
+MATCH (n:Entity:ConcurrentHost {name: $name, node_uid: $node_uid})
+RETURN count(n) AS count
+`, map[string]any{
+		"name":     "cadecrk01cl01vm03",
+		"node_uid": "27933f3e-2bc1-5383-b673-31e5a8d87433",
+	})
+	if count != 1 {
+		t.Fatalf("expected exactly one concurrent host node, got %d", count)
 	}
 }
 
