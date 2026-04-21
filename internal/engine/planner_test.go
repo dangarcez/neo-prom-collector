@@ -185,6 +185,207 @@ func TestPlannerPlanSkipsMissingOptionalLabelProperties(t *testing.T) {
 	}
 }
 
+func TestPlannerPlanAppliesPropertyTransforms(t *testing.T) {
+	planner := NewPlanner()
+
+	job := config.JobConfig{
+		Name:  "pods",
+		Query: "kube_pod_info",
+		Nodes: []config.NodeTemplateConfig{
+			{
+				Types:          []string{"Pod"},
+				TemplateHashes: []string{"pod-v1"},
+				LabelProperties: map[string]string{
+					"name": "pod",
+				},
+				PropertyTransforms: []config.PropertyTransformConfig{
+					{
+						Property: "name",
+						Process: []config.PropertyProcessorConfig{
+							{Type: config.PropertyProcessorTypeToUpper},
+						},
+					},
+				},
+			},
+		},
+		Relationships: []config.RelationshipTemplateConfig{
+			{
+				Type:         "OWNS",
+				TemplateHash: "owns-v1",
+				LabelProperties: map[string]string{
+					"environment": "environment",
+				},
+				PropertyTransforms: []config.PropertyTransformConfig{
+					{
+						Property: "environment",
+						Process: []config.PropertyProcessorConfig{
+							{Type: config.PropertyProcessorTypeToUpper},
+						},
+					},
+				},
+				Source: config.RelationshipEndpointConfig{
+					Type: "Namespace",
+					MatchAttributes: config.SelectorAttributes{
+						Labels: map[string]string{
+							"name": "namespace",
+						},
+					},
+				},
+				Target: config.RelationshipEndpointConfig{
+					Type: "Pod",
+					MatchAttributes: config.SelectorAttributes{
+						Labels: map[string]string{
+							"name": "pod",
+						},
+					},
+				},
+			},
+		},
+	}
+	job.Normalize(30)
+
+	datapoint := domain.Datapoint{
+		Labels: map[string]string{
+			"namespace":   "production",
+			"pod":         "api-0",
+			"environment": "prod",
+		},
+		Value:     1,
+		Timestamp: time.Unix(1700000000, 0).UTC(),
+	}
+
+	plan, err := planner.Plan(job, datapoint)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if len(plan.Nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(plan.Nodes))
+	}
+	if len(plan.Relationships) != 1 {
+		t.Fatalf("expected 1 relationship, got %d", len(plan.Relationships))
+	}
+
+	node := plan.Nodes[0]
+	if node.Name != "API-0" {
+		t.Fatalf("expected transformed node name, got %q", node.Name)
+	}
+	if node.Properties["name"] != "API-0" {
+		t.Fatalf("expected transformed node property name, got %#v", node.Properties["name"])
+	}
+
+	expectedNodeUID := NodeUID([]string{"Pod"}, "API-0", []string{"pod-v1"})
+	if node.UID != expectedNodeUID {
+		t.Fatalf("expected node UID %q, got %q", expectedNodeUID, node.UID)
+	}
+	if node.Properties["node_uid"] != expectedNodeUID {
+		t.Fatalf("expected node property node_uid %q, got %#v", expectedNodeUID, node.Properties["node_uid"])
+	}
+
+	relationship := plan.Relationships[0]
+	if relationship.Properties["environment"] != "PROD" {
+		t.Fatalf("expected transformed relationship property, got %#v", relationship.Properties["environment"])
+	}
+
+	expectedRelUID := RelationshipUID(
+		"OWNS",
+		"owns-v1",
+		domain.NodeSelector{
+			Type: "Namespace",
+			Attributes: map[string]any{
+				"name": "production",
+			},
+		},
+		domain.NodeSelector{
+			Type: "Pod",
+			Attributes: map[string]any{
+				"name": "api-0",
+			},
+		},
+	)
+	if relationship.UID != expectedRelUID {
+		t.Fatalf("expected relationship UID %q, got %q", expectedRelUID, relationship.UID)
+	}
+	if relationship.Properties["rel_uid"] != expectedRelUID {
+		t.Fatalf("expected relationship property rel_uid %q, got %#v", expectedRelUID, relationship.Properties["rel_uid"])
+	}
+}
+
+func TestPlannerPlanCarriesExpirationMetadataWithoutInjectingExpiresAt(t *testing.T) {
+	planner := NewPlanner()
+	nodeExpiration := 30
+	relationshipExpiration := 15
+
+	job := config.JobConfig{
+		Name:  "pods",
+		Query: "kube_pod_info",
+		Nodes: []config.NodeTemplateConfig{
+			{
+				Types:             []string{"Pod"},
+				TemplateHashes:    []string{"pod-v1"},
+				ExpirationTimeMin: &nodeExpiration,
+				LabelProperties: map[string]string{
+					"name": "pod",
+				},
+			},
+		},
+		Relationships: []config.RelationshipTemplateConfig{
+			{
+				Type:              "OWNS",
+				TemplateHash:      "owns-v1",
+				ExpirationTimeMin: &relationshipExpiration,
+				Source: config.RelationshipEndpointConfig{
+					Type: "Namespace",
+					MatchAttributes: config.SelectorAttributes{
+						Labels: map[string]string{
+							"name": "namespace",
+						},
+					},
+				},
+				Target: config.RelationshipEndpointConfig{
+					Type: "Pod",
+					MatchAttributes: config.SelectorAttributes{
+						Labels: map[string]string{
+							"name": "pod",
+						},
+					},
+				},
+			},
+		},
+	}
+	job.Normalize(30)
+
+	datapoint := domain.Datapoint{
+		Labels: map[string]string{
+			"namespace": "production",
+			"pod":       "api-0",
+		},
+		Value:     1,
+		Timestamp: time.Unix(1700000000, 0).UTC(),
+	}
+
+	plan, err := planner.Plan(job, datapoint)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	node := plan.Nodes[0]
+	if node.ExpirationTimeMin == nil || *node.ExpirationTimeMin != 30 {
+		t.Fatalf("expected node expiration metadata to be 30, got %#v", node.ExpirationTimeMin)
+	}
+	if _, exists := node.Properties["expires_at"]; exists {
+		t.Fatalf("expected planner to leave expires_at unset for nodes, got %#v", node.Properties["expires_at"])
+	}
+
+	relationship := plan.Relationships[0]
+	if relationship.ExpirationTimeMin == nil || *relationship.ExpirationTimeMin != 15 {
+		t.Fatalf("expected relationship expiration metadata to be 15, got %#v", relationship.ExpirationTimeMin)
+	}
+	if _, exists := relationship.Properties["expires_at"]; exists {
+		t.Fatalf("expected planner to leave expires_at unset for relationships, got %#v", relationship.Properties["expires_at"])
+	}
+}
+
 func float64Pointer(value float64) *float64 {
 	return &value
 }

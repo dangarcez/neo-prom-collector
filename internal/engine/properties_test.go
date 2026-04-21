@@ -52,6 +52,7 @@ func TestResolveProperties(t *testing.T) {
 				},
 			},
 		},
+		nil,
 		datapoint,
 	)
 	if err != nil {
@@ -96,6 +97,7 @@ func TestResolvePropertiesSkipsMissingLabelProperties(t *testing.T) {
 			"namespace": "namespace",
 		},
 		nil,
+		nil,
 		datapoint,
 	)
 	if err != nil {
@@ -139,6 +141,7 @@ func TestResolvePropertiesSkipsMissingConditionalLabelProperty(t *testing.T) {
 				},
 			},
 		},
+		nil,
 		datapoint,
 	)
 	if err != nil {
@@ -150,5 +153,106 @@ func TestResolvePropertiesSkipsMissingConditionalLabelProperty(t *testing.T) {
 	}
 	if _, exists := properties["team"]; exists {
 		t.Fatalf("expected missing conditional label property to be omitted, got: %#v", properties["team"])
+	}
+}
+
+func TestResolvePropertiesAppliesPropertyTransforms(t *testing.T) {
+	datapoint := domain.Datapoint{
+		Labels: map[string]string{
+			"pod": "Api-0",
+		},
+		Value:     1,
+		Timestamp: time.Date(2026, 4, 11, 15, 4, 5, 0, time.UTC),
+	}
+
+	properties, err := ResolveProperties(
+		map[string]any{
+			"kind":     "WORKLOAD",
+			"pipeline": "Api-Prod",
+		},
+		map[string]string{
+			"name": "pod",
+		},
+		nil,
+		[]config.PropertyTransformConfig{
+			{
+				Property: "name",
+				Process: []config.PropertyProcessorConfig{
+					{Type: config.PropertyProcessorTypeToUpper},
+				},
+			},
+			{
+				Property: "kind",
+				Process: []config.PropertyProcessorConfig{
+					{Type: config.PropertyProcessorTypeToLower},
+				},
+			},
+			{
+				Property: "pipeline",
+				Process: []config.PropertyProcessorConfig{
+					{Type: config.PropertyProcessorTypeToUpper},
+					{Type: config.PropertyProcessorTypeToLower},
+				},
+			},
+		},
+		datapoint,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if properties["name"] != "API-0" {
+		t.Fatalf("expected transformed name, got: %#v", properties["name"])
+	}
+	if properties["kind"] != "workload" {
+		t.Fatalf("expected transformed kind, got: %#v", properties["kind"])
+	}
+	if properties["pipeline"] != "api-prod" {
+		t.Fatalf("expected processors to apply in order, got: %#v", properties["pipeline"])
+	}
+}
+
+func TestResolvePropertiesIgnoresMissingOrNonStringPropertyTransforms(t *testing.T) {
+	datapoint := domain.Datapoint{
+		Labels: map[string]string{
+			"pod": "api-0",
+		},
+		Value:     1,
+		Timestamp: time.Date(2026, 4, 11, 15, 4, 5, 0, time.UTC),
+	}
+
+	properties, err := ResolveProperties(
+		map[string]any{
+			"attempts": 3,
+		},
+		map[string]string{
+			"name": "pod",
+		},
+		nil,
+		[]config.PropertyTransformConfig{
+			{
+				Property: "missing",
+				Process: []config.PropertyProcessorConfig{
+					{Type: config.PropertyProcessorTypeToUpper},
+				},
+			},
+			{
+				Property: "attempts",
+				Process: []config.PropertyProcessorConfig{
+					{Type: config.PropertyProcessorTypeToUpper},
+				},
+			},
+		},
+		datapoint,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if properties["attempts"] != 3 {
+		t.Fatalf("expected non-string property to remain unchanged, got: %#v", properties["attempts"])
+	}
+	if _, exists := properties["missing"]; exists {
+		t.Fatalf("expected missing property transform target to remain absent, got: %#v", properties["missing"])
 	}
 }

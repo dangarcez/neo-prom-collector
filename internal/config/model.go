@@ -116,9 +116,11 @@ type NodeTemplateConfig struct {
 	Types                 []string                    `yaml:"types"`
 	TemplateHashes        []string                    `yaml:"template_hashes"`
 	UpdatePolicy          string                      `yaml:"update_policy"`
+	ExpirationTimeMin     *int                        `yaml:"expiration_time_min"`
 	StaticProperties      map[string]any              `yaml:"static_properties"`
 	LabelProperties       map[string]string           `yaml:"label_properties"`
 	ConditionalProperties []ConditionalPropertyConfig `yaml:"conditional_properties"`
+	PropertyTransforms    []PropertyTransformConfig   `yaml:"property_transforms"`
 	Conditions            []ConditionConfig           `yaml:"conditions"`
 }
 
@@ -137,6 +139,10 @@ func (n *NodeTemplateConfig) Normalize() {
 
 	if n.LabelProperties == nil {
 		n.LabelProperties = map[string]string{}
+	}
+
+	for i := range n.PropertyTransforms {
+		n.PropertyTransforms[i].Normalize()
 	}
 }
 
@@ -166,9 +172,11 @@ type RelationshipTemplateConfig struct {
 	TemplateHash          string                      `yaml:"template_hash"`
 	TemplateHashes        []string                    `yaml:"template_hashes"`
 	UpdatePolicy          string                      `yaml:"update_policy"`
+	ExpirationTimeMin     *int                        `yaml:"expiration_time_min"`
 	StaticProperties      map[string]any              `yaml:"static_properties"`
 	LabelProperties       map[string]string           `yaml:"label_properties"`
 	ConditionalProperties []ConditionalPropertyConfig `yaml:"conditional_properties"`
+	PropertyTransforms    []PropertyTransformConfig   `yaml:"property_transforms"`
 	Conditions            []ConditionConfig           `yaml:"conditions"`
 	Source                RelationshipEndpointConfig  `yaml:"source"`
 	Target                RelationshipEndpointConfig  `yaml:"target"`
@@ -189,6 +197,10 @@ func (r *RelationshipTemplateConfig) Normalize() {
 
 	if r.LabelProperties == nil {
 		r.LabelProperties = map[string]string{}
+	}
+
+	for i := range r.PropertyTransforms {
+		r.PropertyTransforms[i].Normalize()
 	}
 
 	r.Source.Normalize()
@@ -251,6 +263,45 @@ type ConditionalPropertyConfig struct {
 	Value      any               `yaml:"value"`
 	FromLabel  string            `yaml:"from_label"`
 	Conditions []ConditionConfig `yaml:"conditions"`
+}
+
+type PropertyTransformConfig struct {
+	Property string                    `yaml:"property"`
+	Process  []PropertyProcessorConfig `yaml:"process"`
+}
+
+func (c *PropertyTransformConfig) Normalize() {
+	c.Property = strings.TrimSpace(c.Property)
+
+	for i := range c.Process {
+		c.Process[i].Normalize()
+	}
+}
+
+type PropertyProcessorConfig struct {
+	Type string `yaml:"type"`
+}
+
+func (c *PropertyProcessorConfig) Normalize() {
+	c.Type = NormalizePropertyProcessorType(c.Type)
+}
+
+const (
+	PropertyProcessorTypeToUpper = "TO_UPPER"
+	PropertyProcessorTypeToLower = "TO_LOWER"
+)
+
+func NormalizePropertyProcessorType(value string) string {
+	return strings.ToUpper(strings.TrimSpace(value))
+}
+
+func IsSupportedPropertyProcessorType(value string) bool {
+	switch NormalizePropertyProcessorType(value) {
+	case PropertyProcessorTypeToUpper, PropertyProcessorTypeToLower:
+		return true
+	default:
+		return false
+	}
 }
 
 type ConditionConfig struct {

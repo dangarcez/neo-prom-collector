@@ -6,22 +6,24 @@ type NodeSelector struct {
 }
 
 type GraphNode struct {
-	Types          []string
-	Name           string
-	TemplateHashes []string
-	UpdatePolicy   UpdatePolicy
-	Properties     map[string]any
-	UID            string
+	Types             []string
+	Name              string
+	TemplateHashes    []string
+	UpdatePolicy      UpdatePolicy
+	ExpirationTimeMin *int
+	Properties        map[string]any
+	UID               string
 }
 
 type GraphRelationship struct {
-	Type         string
-	TemplateHash string
-	UpdatePolicy UpdatePolicy
-	Source       NodeSelector
-	Target       NodeSelector
-	Properties   map[string]any
-	UID          string
+	Type              string
+	TemplateHash      string
+	UpdatePolicy      UpdatePolicy
+	ExpirationTimeMin *int
+	Source            NodeSelector
+	Target            NodeSelector
+	Properties        map[string]any
+	UID               string
 }
 
 type MutationPlan struct {

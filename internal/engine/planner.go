@@ -34,6 +34,7 @@ func (p *Planner) Plan(job config.JobConfig, datapoint domain.Datapoint) (domain
 			nodeTemplate.StaticProperties,
 			nodeTemplate.LabelProperties,
 			nodeTemplate.ConditionalProperties,
+			nodeTemplate.PropertyTransforms,
 			datapoint,
 		)
 		if err != nil {
@@ -60,12 +61,13 @@ func (p *Planner) Plan(job config.JobConfig, datapoint domain.Datapoint) (domain
 		properties["origin"] = "auto"
 
 		plan.Nodes = append(plan.Nodes, domain.GraphNode{
-			Types:          types,
-			Name:           name,
-			TemplateHashes: append([]string(nil), nodeTemplate.TemplateHashes...),
-			UpdatePolicy:   domain.NormalizeUpdatePolicy(nodeTemplate.UpdatePolicy),
-			Properties:     properties,
-			UID:            uid,
+			Types:             types,
+			Name:              name,
+			TemplateHashes:    append([]string(nil), nodeTemplate.TemplateHashes...),
+			UpdatePolicy:      domain.NormalizeUpdatePolicy(nodeTemplate.UpdatePolicy),
+			ExpirationTimeMin: cloneIntPointer(nodeTemplate.ExpirationTimeMin),
+			Properties:        properties,
+			UID:               uid,
 		})
 	}
 
@@ -82,6 +84,7 @@ func (p *Planner) Plan(job config.JobConfig, datapoint domain.Datapoint) (domain
 			relationshipTemplate.StaticProperties,
 			relationshipTemplate.LabelProperties,
 			relationshipTemplate.ConditionalProperties,
+			relationshipTemplate.PropertyTransforms,
 			datapoint,
 		)
 		if err != nil {
@@ -106,15 +109,25 @@ func (p *Planner) Plan(job config.JobConfig, datapoint domain.Datapoint) (domain
 		properties["origin"] = "auto"
 
 		plan.Relationships = append(plan.Relationships, domain.GraphRelationship{
-			Type:         relationshipTemplate.Type,
-			TemplateHash: templateHash,
-			UpdatePolicy: domain.NormalizeUpdatePolicy(relationshipTemplate.UpdatePolicy),
-			Source:       source,
-			Target:       target,
-			Properties:   properties,
-			UID:          uid,
+			Type:              relationshipTemplate.Type,
+			TemplateHash:      templateHash,
+			UpdatePolicy:      domain.NormalizeUpdatePolicy(relationshipTemplate.UpdatePolicy),
+			ExpirationTimeMin: cloneIntPointer(relationshipTemplate.ExpirationTimeMin),
+			Source:            source,
+			Target:            target,
+			Properties:        properties,
+			UID:               uid,
 		})
 	}
 
 	return plan, nil
+}
+
+func cloneIntPointer(value *int) *int {
+	if value == nil {
+		return nil
+	}
+
+	cloned := *value
+	return &cloned
 }

@@ -62,6 +62,10 @@ func validateNodeTemplate(path string, node NodeTemplateConfig) error {
 		return err
 	}
 
+	if err := validateExpirationTimeMin(path+".expiration_time_min", node.ExpirationTimeMin); err != nil {
+		return err
+	}
+
 	if len(node.NormalizedTypes()) == 0 {
 		return fmt.Errorf("%s must define at least one type", path)
 	}
@@ -86,12 +90,20 @@ func validateNodeTemplate(path string, node NodeTemplateConfig) error {
 		return err
 	}
 
+	if err := validatePropertyTransforms(path+".property_transforms", node.PropertyTransforms); err != nil {
+		return err
+	}
+
 	return validateConditions(path+".conditions", node.Conditions)
 }
 
 func validateRelationshipTemplate(path string, relationship RelationshipTemplateConfig) error {
 	if strings.TrimSpace(relationship.Type) == "" {
 		return fmt.Errorf("%s.type is required", path)
+	}
+
+	if err := validateExpirationTimeMin(path+".expiration_time_min", relationship.ExpirationTimeMin); err != nil {
+		return err
 	}
 
 	if err := validateUpdatePolicy(path+".update_policy", relationship.UpdatePolicy); err != nil {
@@ -111,6 +123,10 @@ func validateRelationshipTemplate(path string, relationship RelationshipTemplate
 	}
 
 	if err := validateConditionalProperties(path+".conditional_properties", relationship.ConditionalProperties); err != nil {
+		return err
+	}
+
+	if err := validatePropertyTransforms(path+".property_transforms", relationship.PropertyTransforms); err != nil {
 		return err
 	}
 
@@ -210,6 +226,32 @@ func validateConditionalProperties(path string, properties []ConditionalProperty
 	return nil
 }
 
+func validatePropertyTransforms(path string, transforms []PropertyTransformConfig) error {
+	for transformIndex, transform := range transforms {
+		transformPath := fmt.Sprintf("%s[%d]", path, transformIndex)
+
+		if strings.TrimSpace(transform.Property) == "" {
+			return fmt.Errorf("%s.property is required", transformPath)
+		}
+
+		if len(transform.Process) == 0 {
+			return fmt.Errorf("%s.process must define at least one processor", transformPath)
+		}
+
+		for processorIndex, processor := range transform.Process {
+			processorPath := fmt.Sprintf("%s.process[%d]", transformPath, processorIndex)
+			if strings.TrimSpace(processor.Type) == "" {
+				return fmt.Errorf("%s.type is required", processorPath)
+			}
+			if !IsSupportedPropertyProcessorType(processor.Type) {
+				return fmt.Errorf("%s.type must be %s or %s", processorPath, PropertyProcessorTypeToUpper, PropertyProcessorTypeToLower)
+			}
+		}
+	}
+
+	return nil
+}
+
 func validateConditions(path string, conditions []ConditionConfig) error {
 	for index, condition := range conditions {
 		itemPath := fmt.Sprintf("%s[%d]", path, index)
@@ -293,4 +335,16 @@ func validateUpdatePolicy(path, value string) error {
 	default:
 		return fmt.Errorf("%s must be create, merge or merge_at_change", path)
 	}
+}
+
+func validateExpirationTimeMin(path string, value *int) error {
+	if value == nil {
+		return nil
+	}
+
+	if *value <= 0 {
+		return fmt.Errorf("%s must be greater than zero when provided", path)
+	}
+
+	return nil
 }

@@ -16,7 +16,7 @@ func (r *Repository) applyNode(ctx context.Context, tx driver.ManagedTransaction
 		return "", err
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC()
 
 	switch node.UpdatePolicy {
 	case domain.UpdatePolicyCreate:
@@ -78,15 +78,17 @@ func (r *Repository) countNodesByIdentity(ctx context.Context, tx driver.Managed
 	return count, nil
 }
 
-func (r *Repository) createNode(ctx context.Context, tx driver.ManagedTransaction, node domain.GraphNode, now string) (domain.PersistAction, error) {
+func (r *Repository) createNode(ctx context.Context, tx driver.ManagedTransaction, node domain.GraphNode, now time.Time) (domain.PersistAction, error) {
 	labels, err := labelsFragment(node.Types)
 	if err != nil {
 		return "", err
 	}
 
 	properties := cloneMap(node.Properties)
-	properties["created_at"] = now
-	properties["updated_at"] = now
+	nowText := now.Format(time.RFC3339)
+	properties["created_at"] = nowText
+	properties["updated_at"] = nowText
+	applyExpiration(properties, node.UpdatePolicy, node.ExpirationTimeMin, now)
 
 	query := fmt.Sprintf(
 		"CREATE (n%s {name: $name}) SET n += $properties RETURN 'created' AS action",
@@ -145,14 +147,15 @@ func (r *Repository) loadNodePropertiesByIdentity(
 	return properties, nil
 }
 
-func (r *Repository) updateNode(ctx context.Context, tx driver.ManagedTransaction, node domain.GraphNode, now string) (domain.PersistAction, error) {
+func (r *Repository) updateNode(ctx context.Context, tx driver.ManagedTransaction, node domain.GraphNode, now time.Time) (domain.PersistAction, error) {
 	labels, err := labelsFragment(node.Types)
 	if err != nil {
 		return "", err
 	}
 
 	properties := cloneMap(node.Properties)
-	properties["updated_at"] = now
+	properties["updated_at"] = now.Format(time.RFC3339)
+	applyExpiration(properties, node.UpdatePolicy, node.ExpirationTimeMin, now)
 
 	query := fmt.Sprintf(
 		"MATCH (n%s {name: $name}) SET n += $properties RETURN 'updated' AS action",

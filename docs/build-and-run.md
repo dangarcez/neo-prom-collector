@@ -79,6 +79,28 @@ make test-integration
 docker build -t neo-collector-go .
 ```
 
+Observacoes:
+
+- o `Dockerfile` compila direto `./cmd/neo-collector` e nao roda `go mod download`
+- isso evita baixar dependencias usadas apenas nos testes de integracao, como `testcontainers-go`
+- no primeiro build, o `go build` ainda pode baixar os modulos realmente usados pelo binario
+
+## Build com Podman
+
+Com Podman, se o build parecer travado enquanto o Go baixa modulos, o problema normalmente nao e o projeto, e sim DNS/rede do ambiente de build. O sintoma comum e a resolucao de `proxy.golang.org` falhar ou demorar muito.
+
+Comando recomendado:
+
+```bash
+podman build --network=host -t neo_prom_collector .
+```
+
+Se ainda falhar:
+
+- revise a conectividade DNS do Podman
+- confirme que `proxy.golang.org` e `sum.golang.org` sao acessiveis no ambiente do builder
+- se estiver em ambiente corporativo, configure os proxies do Podman antes do build
+
 ## Rodar com Docker Compose
 
 O projeto inclui um `docker-compose.yml` para subir uma stack local completa com:

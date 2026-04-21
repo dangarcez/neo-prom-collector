@@ -68,7 +68,7 @@ func (r *Repository) applyRelationshipMatch(
 		return "", errors.New("ambiguous equivalent relationship match")
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC()
 
 	switch relationship.UpdatePolicy {
 	case domain.UpdatePolicyCreate:
@@ -195,7 +195,7 @@ func (r *Repository) createRelationship(
 	sourceID string,
 	targetID string,
 	relationship domain.GraphRelationship,
-	now string,
+	now time.Time,
 ) (domain.PersistAction, error) {
 	relationshipType, err := sanitizeIdentifier(relationship.Type)
 	if err != nil {
@@ -203,8 +203,10 @@ func (r *Repository) createRelationship(
 	}
 
 	properties := cloneMap(relationship.Properties)
-	properties["created_at"] = now
-	properties["updated_at"] = now
+	nowText := now.Format(time.RFC3339)
+	properties["created_at"] = nowText
+	properties["updated_at"] = nowText
+	applyExpiration(properties, relationship.UpdatePolicy, relationship.ExpirationTimeMin, now)
 
 	query := fmt.Sprintf(`
 MATCH (source) WHERE elementId(source) = $source_id
@@ -282,7 +284,7 @@ func (r *Repository) updateRelationship(
 	sourceID string,
 	targetID string,
 	relationship domain.GraphRelationship,
-	now string,
+	now time.Time,
 ) (domain.PersistAction, error) {
 	relationshipType, err := sanitizeIdentifier(relationship.Type)
 	if err != nil {
@@ -292,7 +294,8 @@ func (r *Repository) updateRelationship(
 	templateHashes := relationshipTemplateHashes(relationship)
 
 	properties := cloneMap(relationship.Properties)
-	properties["updated_at"] = now
+	properties["updated_at"] = now.Format(time.RFC3339)
+	applyExpiration(properties, relationship.UpdatePolicy, relationship.ExpirationTimeMin, now)
 
 	query := fmt.Sprintf(`
 MATCH (source) WHERE elementId(source) = $source_id

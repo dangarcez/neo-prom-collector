@@ -13,6 +13,7 @@ func ResolveProperties(
 	staticProperties map[string]any,
 	dynamicProperties map[string]string,
 	conditionalProperties []config.ConditionalPropertyConfig,
+	propertyTransforms []config.PropertyTransformConfig,
 	datapoint domain.Datapoint,
 ) (map[string]any, error) {
 	properties := cloneMap(staticProperties)
@@ -52,6 +53,10 @@ func ResolveProperties(
 		default:
 			return nil, fmt.Errorf("unsupported conditional property type %q", property.Type)
 		}
+	}
+
+	if err := ApplyPropertyTransforms(properties, propertyTransforms); err != nil {
+		return nil, fmt.Errorf("apply property transforms: %w", err)
 	}
 
 	return properties, nil

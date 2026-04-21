@@ -19,9 +19,11 @@ O PRD, o guia `ingestao-automatica.md` e o `config.demo.yaml` têm pequenas inco
 - relacionamentos usam `rel_uid`, não `node_uid`
 - todo node recebe a label base `Entity`
 - `origin` deve ser sempre `"auto"`
-- `created_at` e `updated_at` devem ser gravados em ISO 8601 UTC
+- `created_at`, `updated_at` e `expires_at` devem ser gravados em ISO 8601 UTC
 - `update_policy` aceita `create`, `merge` e `merge_at_change`, com `create` como default
 - a configuração YAML deve normalizar `type` e `types` para um campo interno único
+- a configuração YAML pode definir `property_transforms` em nodes e relacionamentos para pós-processar propriedades resolvidas
+- a configuração YAML pode definir `expiration_time_min` para pedir injecao automatica de `expires_at` na persistencia
 - typos do YAML de exemplo, como `greaterThen`, devem ser tratados como inválidos na validação
 
 Essa decisão é necessária porque o guia de ingestão define os nomes exatos esperados pelo app principal.
@@ -55,6 +57,7 @@ Essa decisão é necessária porque o guia de ingestão define os nomes exatos e
                        |                    | Rule Engine |
                        |                    | conditions  |
                        |                    | properties  |
+                       |                    | transforms  |
                        |                    | ids         |
                        |                    +------+------+ 
                        |                           |
@@ -109,6 +112,7 @@ neo_collector_go/
 │   │   ├── processor.go
 │   │   ├── conditions.go
 │   │   ├── properties.go
+│   │   ├── property_transforms.go
 │   │   ├── identity.go
 │   │   └── planner.go
 │   ├── repository/
@@ -146,6 +150,7 @@ Responsável por:
 - carregar YAML com targets, jobs, nodes e relacionamentos
 - validar regras obrigatórias antes da aplicação subir
 - normalizar diferenças de schema do YAML para um modelo interno estável
+- normalizar `property_transforms` para tipos canônicos de processor
 
 ### `internal/scheduler`
 
@@ -161,6 +166,8 @@ Encapsula comunicação com Prometheus, inclusive timeout, TLS, tratamento de er
 
 - avalia condições de criação
 - resolve propriedades estáticas, dinâmicas e condicionais
+- aplica `property_transforms` sobre as propriedades resolvidas
+- carrega metadados de persistencia como `expiration_time_min`
 - garante presença de `name` em nodes
 - calcula identidades estáveis
 - gera um plano de mutação para Neo4j
@@ -176,6 +183,7 @@ Executa as operações de persistência com transação, obedecendo as regras:
 - `merge_at_change` só atualiza quando algum atributo de negócio vindo do YAML mudou
 - `create` só insere se não existir
 - `updated_at` só muda quando há mutação real
+- `expires_at` só é criado ou renovado quando `expiration_time_min` estiver configurado e a policy for `create` ou `merge`
 
 ### `internal/observability`
 
@@ -201,20 +209,24 @@ Centraliza logs estruturados, métricas operacionais e eventualmente health chec
 ### 3. Processamento de datapoint
 
 1. O engine avalia as condições dos nodes.
-2. Para cada node elegível, resolve propriedades, injeta campos automáticos, calcula `node_uid` e gera o plano de persistência.
-3. O engine avalia as condições dos relacionamentos.
-4. Para cada relacionamento elegível, resolve selectors e propriedades, e gera o plano de persistência sem criar nodes.
+2. Para cada node elegível, resolve `static_properties`, `label_properties` e `conditional_properties`.
+3. Aplica `property_transforms` sobre o mapa final de propriedades resolvidas.
+4. Carrega metadados de persistencia como `expiration_time_min`.
+5. Injeta campos automáticos, calcula `node_uid` e gera o plano de persistência.
+6. O engine avalia as condições dos relacionamentos.
+7. Para cada relacionamento elegível, resolve propriedades, aplica `property_transforms`, carrega `expiration_time_min`, resolve selectors e gera o plano de persistência sem criar nodes.
 
 ### 4. Persistência no Neo4j
 
 1. Os nodes do datapoint são persistidos primeiro.
 2. O repositório verifica existência por identidade de negócio.
 3. Aplica `create`, `merge` ou `merge_at_change`.
-4. Os relacionamentos são persistidos em seguida.
-5. Source e target são localizados por tipo e atributos definidos na configuração.
-6. Se um dos lados não existir, o relacionamento é ignorado.
-7. Se houver múltiplos matches em source ou target, o repositório cria o produto cartesiano entre eles.
-8. Se já existirem múltiplos relacionamentos equivalentes para o mesmo par source-target, a aplicação falha aquele datapoint por inconsistência de identidade.
+4. Injeta `created_at`, `updated_at` e, quando aplicavel, `expires_at`.
+5. Os relacionamentos são persistidos em seguida.
+6. Source e target são localizados por tipo e atributos definidos na configuração.
+7. Se um dos lados não existir, o relacionamento é ignorado.
+8. Se houver múltiplos matches em source ou target, o repositório cria o produto cartesiano entre eles.
+9. Se já existirem múltiplos relacionamentos equivalentes para o mesmo par source-target, a aplicação falha aquele datapoint por inconsistência de identidade.
 
 ### 5. Observabilidade
 
@@ -259,30 +271,34 @@ Isso evita duplicação entre execuções e mantém a exigência de estabilidade
 
 O PRD determina que relacionamentos não criem nodes. Logo, a ordem de persistência precisa respeitar dependência explícita.
 
-### 7. Usar políticas explícitas de persistência
+### 7. Isolar `property_transforms` em um registry de processors
 
-Para `create`, o repositório faz verificação prévia e não altera registros existentes. Para `merge`, faz upsert e sempre renova `updated_at` quando a entidade já existe. Para `merge_at_change`, compara apenas os atributos vindos do YAML e só atualiza quando houver mudança real de negócio. Isso evita churn artificial de `updated_at` sem perder o comportamento antigo de `merge`.
+Os processors de propriedades entram como um pipeline dedicado entre a resolução de propriedades e a injeção dos campos automáticos. Essa separação evita espalhar `switch` pelo planner, mantém a semântica de `ResolveProperties` explícita e facilita adicionar novos processors no futuro sem redesenhar o contrato do YAML.
 
-### 8. Validar configuração no startup
+### 8. Usar políticas explícitas de persistência
+
+Para `create`, o repositório faz verificação prévia e não altera registros existentes. Para `merge`, faz upsert e sempre renova `updated_at` quando a entidade já existe. Para `merge_at_change`, compara apenas os atributos vindos do YAML e só atualiza quando houver mudança real de negócio. Isso evita churn artificial de `updated_at` sem perder o comportamento antigo de `merge`. `expires_at` segue a mesma linha de automação por policy: só entra nas policies `create` e `merge`, mesmo quando `expiration_time_min` estiver configurado.
+
+### 9. Validar configuração no startup
 
 Erros como ausência de `name`, uso de operador inválido, `template_hash` ausente na config, ou source ou target incompletos devem falhar antes da aplicação entrar em loop. Isso reduz falhas silenciosas em produção.
 
-### 9. Usar drivers oficiais
+### 10. Usar drivers oficiais
 
 - Prometheus: cliente HTTP oficial do ecossistema Prometheus
 - Neo4j: `neo4j-go-driver/v5`
 
 A decisão reduz risco de incompatibilidade, simplifica manutenção e melhora suporte a autenticação, timeout e retry.
 
-### 10. Logs estruturados com `log/slog`
+### 11. Logs estruturados com `log/slog`
 
 `slog` já faz parte da stdlib moderna do Go. Evita dependência desnecessária e facilita emitir logs JSON para container e agregadores.
 
-### 11. Concorrência com limite
+### 12. Concorrência com limite
 
 Cada job pode rodar em sua própria goroutine, mas o processamento de datapoints deve passar por pool limitado. Isso mantém escalabilidade sem saturar Neo4j ou Prometheus quando houver queries volumosas.
 
-### 12. Tratamento explícito de ambiguidades de identidade
+### 13. Tratamento explícito de ambiguidades de identidade
 
 Múltiplos matches em source e target são tratados como fan-out controlado, gerando todos os pares possíveis. A ambiguidade que continua sendo erro é encontrar mais de um relacionamento equivalente para o mesmo par source-target e mesmo `template_hashes`, porque isso indica identidade inconsistente no grafo.
 
@@ -295,9 +311,11 @@ NodeTemplate
 - Types []string
 - TemplateHashes []string
 - UpdatePolicy create|merge|merge_at_change
+- ExpirationTimeMin *int
 - StaticProperties map[string]any
 - DynamicProperties []DynamicProperty
 - ConditionalProperties []ConditionalProperty
+- PropertyTransforms []PropertyTransform
 - Conditions []Condition
 ```
 
@@ -308,11 +326,13 @@ RelationshipTemplate
 - Type string
 - TemplateHash string
 - UpdatePolicy create|merge|merge_at_change
+- ExpirationTimeMin *int
 - Source NodeSelector
 - Target NodeSelector
 - StaticProperties map[string]any
 - DynamicProperties []DynamicProperty
 - ConditionalProperties []ConditionalProperty
+- PropertyTransforms []PropertyTransform
 - Conditions []Condition
 ```
 
@@ -332,6 +352,7 @@ Campos automáticos:
 - `origin`
 - `created_at`
 - `updated_at`
+- `expires_at` quando `expiration_time_min` estiver configurado e a policy for `create` ou `merge`
 
 ### Relacionamentos
 
@@ -348,6 +369,7 @@ Campos automáticos:
 - `origin`
 - `created_at`
 - `updated_at`
+- `expires_at` quando `expiration_time_min` estiver configurado e a policy for `create` ou `merge`
 
 ## Regras de validação obrigatórias
 

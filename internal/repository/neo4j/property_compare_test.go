@@ -16,6 +16,7 @@ func TestManagedNodePropertiesExcludeAutomaticFields(t *testing.T) {
 			"origin":          "auto",
 			"created_at":      "2026-04-12T10:00:00Z",
 			"updated_at":      "2026-04-12T10:00:00Z",
+			"expires_at":      "2026-04-12T11:00:00Z",
 		},
 	}
 
@@ -42,6 +43,7 @@ func TestManagedRelationshipPropertiesExcludeAutomaticFields(t *testing.T) {
 			"origin":          "auto",
 			"created_at":      "2026-04-12T10:00:00Z",
 			"updated_at":      "2026-04-12T10:00:00Z",
+			"expires_at":      "2026-04-12T11:00:00Z",
 		},
 	}
 

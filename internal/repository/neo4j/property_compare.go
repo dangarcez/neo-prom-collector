@@ -12,6 +12,7 @@ var automaticNodeProperties = map[string]struct{}{
 	"origin":          {},
 	"created_at":      {},
 	"updated_at":      {},
+	"expires_at":      {},
 }
 
 var automaticRelationshipProperties = map[string]struct{}{
@@ -20,6 +21,7 @@ var automaticRelationshipProperties = map[string]struct{}{
 	"origin":          {},
 	"created_at":      {},
 	"updated_at":      {},
+	"expires_at":      {},
 }
 
 func managedNodeProperties(node domain.GraphNode) map[string]any {

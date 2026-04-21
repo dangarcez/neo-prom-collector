@@ -120,6 +120,10 @@ prom_targets:
                 conditions:
                   - type: value
                     greater_than: 100
+            property_transforms:
+              - property: name
+                process:
+                  - type: TO_UPPER
 
         relationships:
           - type: OWNS
@@ -127,6 +131,10 @@ prom_targets:
             update_policy: merge
             static_properties:
               source_system: prometheus
+            property_transforms:
+              - property: source_system
+                process:
+                  - type: TO_LOWER
             source:
               type: Namespace
               match_attributes:
@@ -197,7 +205,7 @@ Cada job executa uma query Prometheus e processa cada datapoint retornado de for
 
 - `interval_seconds` precisa ser maior que zero apos a normalizacao.
 - Um job pode ter apenas nodes, apenas relacionamentos, ou ambos.
-- Os relacionamentos nao criam nodes implicitamente; eles so sao aplicados se `source` e `target` encontrarem exatamente um node cada.
+- Os relacionamentos nao criam nodes implicitamente; eles so sao aplicados quando `source` e `target` encontram ao menos um node cada.
 
 ## Nodes
 
@@ -213,9 +221,11 @@ Cada template de node e avaliado contra cada datapoint retornado pela query do j
 | `types` | lista de string | condicional | - | Lista de labels tecnicas do node. Deve haver ao menos uma. |
 | `template_hashes` | lista de string | sim | - | Lista de hashes de definicoes associados ao node. |
 | `update_policy` | string | nao | `create` | Politica de persistencia: `create`, `merge` ou `merge_at_change`. |
+| `expiration_time_min` | inteiro | nao | ausente | Quando informado, gera `expires_at` como horario atual UTC + esse numero de minutos. So e aplicado em `create` e `merge`. |
 | `static_properties` | mapa | nao | `{}` | Propriedades literais copiadas para o node. |
 | `label_properties` | mapa string->string | nao | `{}` | Propriedades dinamicas resolvidas a partir de labels ou tokens especiais. |
 | `conditional_properties` | lista | nao | `[]` | Propriedades aplicadas apenas quando suas condicoes passam. |
+| `property_transforms` | lista | nao | `[]` | Processamentos aplicados sobre propriedades ja resolvidas antes dos campos automaticos. |
 | `conditions` | lista | nao | `[]` | Filtro para decidir se o template deve ser aplicado ao datapoint. |
 
 ### Regras obrigatorias
@@ -242,6 +252,7 @@ Cada template de node e avaliado contra cada datapoint retornado pela query do j
   template_hashes:
     - pod-v1
   update_policy: merge
+  expiration_time_min: 30
   static_properties:
     kind: workload
   label_properties:
@@ -263,6 +274,13 @@ Cada template de node e avaliado contra cada datapoint retornado pela query do j
         - type: label
           label: owner_team
           not_equals: ""
+  property_transforms:
+    - property: name
+      process:
+        - type: TO_UPPER
+    - property: namespace
+      process:
+        - type: TO_LOWER
 ```
 
 ## Relacionamentos
@@ -279,9 +297,11 @@ Cada template de relacionamento e avaliado contra cada datapoint retornado pela 
 | `template_hash` | string | condicional | - | Hash canonico da definicao de relacionamento. |
 | `template_hashes` | lista de string | condicional | - | Alias aceito apenas quando houver um unico item; sera normalizado para `template_hash`. |
 | `update_policy` | string | nao | `create` | Politica de persistencia: `create`, `merge` ou `merge_at_change`. |
+| `expiration_time_min` | inteiro | nao | ausente | Quando informado, gera `expires_at` como horario atual UTC + esse numero de minutos. So e aplicado em `create` e `merge`. |
 | `static_properties` | mapa | nao | `{}` | Propriedades literais do relacionamento. |
 | `label_properties` | mapa string->string | nao | `{}` | Propriedades dinamicas resolvidas do datapoint. |
 | `conditional_properties` | lista | nao | `[]` | Propriedades aplicadas apenas se as condicoes forem satisfeitas. |
+| `property_transforms` | lista | nao | `[]` | Processamentos aplicados sobre propriedades ja resolvidas antes dos campos automaticos. |
 | `conditions` | lista | nao | `[]` | Filtro para decidir se o relacionamento deve ser gerado. |
 | `source` | objeto | sim | - | Seletor do node de origem. |
 | `target` | objeto | sim | - | Seletor do node de destino. |
@@ -378,7 +398,9 @@ target:
 
 ## Propriedades
 
-Existem tres formas de definir propriedades em nodes e relacionamentos.
+Existem quatro formas de definir e ajustar propriedades em nodes e relacionamentos.
+
+Separadamente dessas quatro formas, nodes e relacionamentos tambem podem declarar `expiration_time_min`, que nao escreve uma propriedade de negocio diretamente no planner. Esse campo instrui o repositorio a gerar `expires_at` no momento da escrita, com base no horario atual UTC.
 
 ### `static_properties`
 
@@ -454,6 +476,89 @@ conditional_properties:
         not_equals: ""
 ```
 
+### `property_transforms`
+
+Cada item aponta para uma propriedade ja resolvida e aplica uma lista ordenada de processors sobre o valor atual.
+
+Campos:
+
+| Campo | Tipo | Obrigatorio | Descricao |
+| --- | --- | --- | --- |
+| `property` | string | sim | Nome da propriedade que sera processada. |
+| `process` | lista | sim | Lista ordenada de processors aplicados em sequencia. |
+
+Cada item de `process` e um objeto com:
+
+| Campo | Tipo | Obrigatorio | Descricao |
+| --- | --- | --- | --- |
+| `type` | string | sim | Processor a aplicar. Na versao atual: `TO_UPPER` ou `TO_LOWER`. |
+
+Exemplo em node:
+
+```yaml
+property_transforms:
+  - property: name
+    process:
+      - type: TO_UPPER
+  - property: environment
+    process:
+      - type: TO_LOWER
+```
+
+Exemplo em relacionamento:
+
+```yaml
+property_transforms:
+  - property: source_system
+    process:
+      - type: TO_LOWER
+```
+
+Comportamento:
+
+- o bloco roda depois de `static_properties`, `label_properties` e `conditional_properties`
+- o bloco roda antes da injecao de `node_uid`, `rel_uid`, `template_hashes`, `origin`, `created_at`, `updated_at` e `expires_at`
+- se a propriedade alvo nao existir no mapa final, o item e ignorado
+- se o valor existir mas nao for `string`, `TO_UPPER` e `TO_LOWER` sao ignorados para aquela propriedade
+- em node, transformar `name` muda o `name` final e o `node_uid` derivado dele
+- em relacionamento, `property_transforms` afeta apenas `properties`; `source` e `target` nao participam desse pipeline
+- a ordem da lista `process` importa; a saida de um processor vira a entrada do proximo
+
+### `expiration_time_min`
+
+Campo opcional em:
+
+- `nodes[]`
+- `relationships[]`
+
+Quando informado, o repositorio calcula automaticamente:
+
+- `expires_at = horario_atual_utc + expiration_time_min`
+
+Formato persistido:
+
+- `expires_at` em RFC3339 UTC
+
+Regras:
+
+- `expiration_time_min` deve ser maior que zero quando informado
+- `expires_at` nao e criado pelo planner; ele e injetado no momento da persistencia
+- `expires_at` e aplicado em policies `create` e `merge`
+- `expires_at` nao e criado nem renovado quando a template usa `merge_at_change`
+- `expires_at` e tratado como campo automatico, no mesmo grupo de `created_at` e `updated_at`
+
+Exemplo:
+
+```yaml
+- type: Host
+  template_hashes:
+    - host-v1
+  update_policy: merge
+  expiration_time_min: 30
+  label_properties:
+    name: machine_name
+```
+
 ### Ordem de aplicacao
 
 As propriedades sao resolvidas nesta ordem:
@@ -461,8 +566,11 @@ As propriedades sao resolvidas nesta ordem:
 1. `static_properties`
 2. `label_properties`
 3. `conditional_properties`
+4. `property_transforms`
 
 Se a mesma chave aparecer mais de uma vez, a ultima atribuicao vence.
+
+Depois disso, na camada de persistencia, a aplicacao ainda pode injetar campos automaticos como `node_uid`, `rel_uid`, `origin`, `created_at`, `updated_at` e `expires_at`.
 
 ## Condicoes
 
@@ -559,11 +667,13 @@ Valores:
 
 - cria somente se a entidade equivalente ainda nao existir
 - se ja existir, a mutacao e ignorada
+- se `expiration_time_min` estiver configurado, cria `expires_at` no momento da insercao
 
 `merge`
 
 - cria quando nao existe
 - atualiza propriedades quando ja existe
+- se `expiration_time_min` estiver configurado, cria ou renova `expires_at`
 
 `merge_at_change`
 
@@ -571,6 +681,7 @@ Valores:
 - compara apenas os atributos definidos no YAML, ignorando campos automaticos
 - se nada mudou nos atributos de negocio, nao atualiza a entidade
 - se algo mudou, atualiza propriedades e renova `updated_at`
+- mesmo quando `expiration_time_min` estiver configurado, `expires_at` nao e criado nem renovado nessa policy
 
 Se o campo for omitido, o default e `create`.
 
@@ -587,12 +698,14 @@ Se o campo for omitido, o default e `create`.
 - `nodes[].update_policy`: `create`
 - `relationships[].update_policy`: `create`
 - mapas de propriedades ausentes sao normalizados para objetos vazios
+- `expiration_time_min` ausente nao gera `expires_at`
 
 ### Normalizacoes aceitas
 
 - `nodes[].type` e convertido para `nodes[].types` com um item
 - `relationships[].template_hashes` com um unico item e convertido para `template_hash`
 - `mergeAtChange` e `merge-at-change` sao aceitos como alias de `merge_at_change`
+- `property_transforms[].process[].type` e normalizado para caixa alta antes da validacao
 - aliases legados de match sao incorporados em `match_attributes`
 - strings com espacos nas extremidades sao `trimadas` nos campos relevantes
 
@@ -617,6 +730,8 @@ O bootstrap falha antes de iniciar o scheduler quando encontrar erros como:
 - `update_policy` fora de `create`, `merge` ou `merge_at_change`
 - condicoes com mais de um operador
 - `conditional_properties` sem `name`, `type` valido ou `conditions`
+- `property_transforms` sem `property`, sem `process` ou com `process[].type` nao suportado
+- `expiration_time_min <= 0` quando informado
 
 ## Erros comuns de modelagem
 
@@ -635,7 +750,11 @@ O parser aceita `template_hashes` apenas como alias para um unico valor. Para re
 
 Se um token em `label_properties` ou em `conditional_properties` do tipo `label` apontar para uma label ausente no datapoint, a propriedade e omitida. Ja em `match_attributes.labels`, a ausencia continua sendo erro de processamento.
 
-### 4. Esperar criacao automatica de nodes a partir de relacionamento
+### 4. Esperar transformacao sobre campo automatico
+
+`property_transforms` roda antes da injecao dos campos automaticos. Isso significa que ele pode atuar sobre propriedades declaradas no YAML, inclusive `name`, mas nao sobre `node_uid`, `rel_uid`, `template_hashes`, `origin`, `created_at`, `updated_at` ou `expires_at`.
+
+### 5. Esperar criacao automatica de nodes a partir de relacionamento
 
 Relacionamentos dependem de `source` e `target` ja resolvidos. Se nenhum node for encontrado em um dos lados, o relacionamento e ignorado. Se houver multiplos matches em `source` ou `target`, o coletor cria todos os relacionamentos possiveis entre os pares encontrados.
 
