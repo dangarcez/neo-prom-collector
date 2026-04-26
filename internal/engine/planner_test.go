@@ -104,12 +104,11 @@ func TestPlannerPlanBuildsNodesAndRelationships(t *testing.T) {
 	if relationship.Properties["rel_uid"] == "" {
 		t.Fatal("expected rel_uid to be set")
 	}
-	templateHashes, ok := relationship.Properties["template_hashes"].([]string)
-	if !ok {
-		t.Fatalf("expected template_hashes to be []string, got: %#v", relationship.Properties["template_hashes"])
+	if relationship.Properties["template_hash"] != "owns-v1" {
+		t.Fatalf("expected template_hash to be owns-v1, got: %#v", relationship.Properties["template_hash"])
 	}
-	if len(templateHashes) != 1 || templateHashes[0] != "owns-v1" {
-		t.Fatalf("expected template_hashes to contain owns-v1, got: %#v", relationship.Properties["template_hashes"])
+	if _, ok := relationship.Properties["template_hashes"]; ok {
+		t.Fatalf("expected relationship not to contain template_hashes, got: %#v", relationship.Properties["template_hashes"])
 	}
 }
 

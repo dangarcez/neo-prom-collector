@@ -279,16 +279,20 @@ func (c *PropertyTransformConfig) Normalize() {
 }
 
 type PropertyProcessorConfig struct {
-	Type string `yaml:"type"`
+	Type    string `yaml:"type"`
+	Pattern string `yaml:"pattern"`
+	Output  string `yaml:"output"`
 }
 
 func (c *PropertyProcessorConfig) Normalize() {
 	c.Type = NormalizePropertyProcessorType(c.Type)
+	c.Pattern = strings.TrimSpace(c.Pattern)
 }
 
 const (
 	PropertyProcessorTypeToUpper = "TO_UPPER"
 	PropertyProcessorTypeToLower = "TO_LOWER"
+	PropertyProcessorTypeRegex   = "REGEX"
 )
 
 func NormalizePropertyProcessorType(value string) string {
@@ -297,11 +301,19 @@ func NormalizePropertyProcessorType(value string) string {
 
 func IsSupportedPropertyProcessorType(value string) bool {
 	switch NormalizePropertyProcessorType(value) {
-	case PropertyProcessorTypeToUpper, PropertyProcessorTypeToLower:
+	case PropertyProcessorTypeToUpper, PropertyProcessorTypeToLower, PropertyProcessorTypeRegex:
 		return true
 	default:
 		return false
 	}
+}
+
+func NormalizeRegexPattern(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if len(trimmed) >= 2 && strings.HasPrefix(trimmed, "/") && strings.HasSuffix(trimmed, "/") {
+		return strings.TrimSpace(trimmed[1 : len(trimmed)-1])
+	}
+	return trimmed
 }
 
 type ConditionConfig struct {

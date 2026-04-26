@@ -63,6 +63,9 @@ prom_targets:
               - property: name
                 process:
                   - type: to_upper
+                  - type: regex
+                    pattern: "/(\\w+)_(\\w+)/"
+                    output: "$1_and_$2"
 `)
 
 	if err := os.WriteFile(configPath, content, 0o644); err != nil {
@@ -81,11 +84,20 @@ prom_targets:
 	if transforms[0].Property != "name" {
 		t.Fatalf("expected transform property to be name, got %q", transforms[0].Property)
 	}
-	if len(transforms[0].Process) != 1 {
-		t.Fatalf("expected one property processor, got %d", len(transforms[0].Process))
+	if len(transforms[0].Process) != 2 {
+		t.Fatalf("expected two property processors, got %d", len(transforms[0].Process))
 	}
 	if transforms[0].Process[0].Type != PropertyProcessorTypeToUpper {
 		t.Fatalf("expected property processor to normalize to %q, got %q", PropertyProcessorTypeToUpper, transforms[0].Process[0].Type)
+	}
+	if transforms[0].Process[1].Type != PropertyProcessorTypeRegex {
+		t.Fatalf("expected regex property processor to normalize to %q, got %q", PropertyProcessorTypeRegex, transforms[0].Process[1].Type)
+	}
+	if transforms[0].Process[1].Pattern != `/(\w+)_(\w+)/` {
+		t.Fatalf("expected regex pattern to be preserved, got %q", transforms[0].Process[1].Pattern)
+	}
+	if transforms[0].Process[1].Output != "$1_and_$2" {
+		t.Fatalf("expected regex output to be preserved, got %q", transforms[0].Process[1].Output)
 	}
 }
 

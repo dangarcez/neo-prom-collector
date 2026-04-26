@@ -256,3 +256,79 @@ func TestResolvePropertiesIgnoresMissingOrNonStringPropertyTransforms(t *testing
 		t.Fatalf("expected missing property transform target to remain absent, got: %#v", properties["missing"])
 	}
 }
+
+func TestResolvePropertiesAppliesRegexPropertyTransform(t *testing.T) {
+	datapoint := domain.Datapoint{
+		Labels: map[string]string{
+			"metric": "cpu_vru",
+		},
+		Value:     1,
+		Timestamp: time.Date(2026, 4, 11, 15, 4, 5, 0, time.UTC),
+	}
+
+	properties, err := ResolveProperties(
+		nil,
+		map[string]string{
+			"name": "metric",
+		},
+		nil,
+		[]config.PropertyTransformConfig{
+			{
+				Property: "name",
+				Process: []config.PropertyProcessorConfig{
+					{
+						Type:    config.PropertyProcessorTypeRegex,
+						Pattern: `/(\w+)_(\w+)/`,
+						Output:  "$1_and_$2",
+					},
+				},
+			},
+		},
+		datapoint,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if properties["name"] != "cpu_and_vru" {
+		t.Fatalf("expected regex-transformed name, got: %#v", properties["name"])
+	}
+}
+
+func TestResolvePropertiesIgnoresRegexPropertyTransformWithoutMatch(t *testing.T) {
+	datapoint := domain.Datapoint{
+		Labels: map[string]string{
+			"metric": "cpu",
+		},
+		Value:     1,
+		Timestamp: time.Date(2026, 4, 11, 15, 4, 5, 0, time.UTC),
+	}
+
+	properties, err := ResolveProperties(
+		nil,
+		map[string]string{
+			"name": "metric",
+		},
+		nil,
+		[]config.PropertyTransformConfig{
+			{
+				Property: "name",
+				Process: []config.PropertyProcessorConfig{
+					{
+						Type:    config.PropertyProcessorTypeRegex,
+						Pattern: `/(\w+)_(\w+)/`,
+						Output:  "$1_and_$2",
+					},
+				},
+			},
+		},
+		datapoint,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if properties["name"] != "cpu" {
+		t.Fatalf("expected unmatched regex to preserve value, got: %#v", properties["name"])
+	}
+}

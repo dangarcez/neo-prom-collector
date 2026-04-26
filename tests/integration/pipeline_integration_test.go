@@ -314,8 +314,8 @@ func TestRepositoryApplyPlanCreatesRelationshipCrossProductForMultipleMatches(t 
 					},
 				},
 				Properties: map[string]any{
-					"template_hashes": []string{"connects-to-v1"},
-					"origin":          "auto",
+					"template_hash": "connects-to-v1",
+					"origin":        "auto",
 				},
 				UID: "connects-to-template-uid",
 			},
@@ -356,20 +356,20 @@ func TestRepositoryApplyPlanCreatesRelationshipCrossProductForMultipleMatches(t 
 	}()
 
 	relationshipCount := readCount(ctx, t, session, `
-MATCH (:Entity:SourceDemo {group: "demo"})-[r:CONNECTS_TO {template_hashes: $template_hashes, origin: "auto"}]->(:Entity:TargetDemo {group: "demo"})
+MATCH (:Entity:SourceDemo {group: "demo"})-[r:CONNECTS_TO {template_hash: $template_hash, origin: "auto"}]->(:Entity:TargetDemo {group: "demo"})
 RETURN count(r) AS count
 `, map[string]any{
-		"template_hashes": []string{"connects-to-v1"},
+		"template_hash": "connects-to-v1",
 	})
 	if relationshipCount != 6 {
 		t.Fatalf("expected exactly 6 fan-out relationships, got %d", relationshipCount)
 	}
 
 	distinctUIDCount := readCount(ctx, t, session, `
-MATCH (:Entity:SourceDemo {group: "demo"})-[r:CONNECTS_TO {template_hashes: $template_hashes, origin: "auto"}]->(:Entity:TargetDemo {group: "demo"})
+MATCH (:Entity:SourceDemo {group: "demo"})-[r:CONNECTS_TO {template_hash: $template_hash, origin: "auto"}]->(:Entity:TargetDemo {group: "demo"})
 RETURN count(DISTINCT r.rel_uid) AS count
 `, map[string]any{
-		"template_hashes": []string{"connects-to-v1"},
+		"template_hash": "connects-to-v1",
 	})
 	if distinctUIDCount != 6 {
 		t.Fatalf("expected 6 distinct relationship rel_uid values, got %d", distinctUIDCount)
@@ -608,11 +608,11 @@ RETURN count(n) AS count
 	}
 
 	relationshipCount := readCount(ctx, t, session, `
-MATCH (:Entity:Prometheus {name: $name})-[r:EXPOSES_BUILD {template_hashes: $template_hashes, origin: "auto"}]->(:Entity:BuildVersion)
+MATCH (:Entity:Prometheus {name: $name})-[r:EXPOSES_BUILD {template_hash: $template_hash, origin: "auto"}]->(:Entity:BuildVersion)
 RETURN count(r) AS count
 `, map[string]any{
-		"name":            "main_prometheus",
-		"template_hashes": []string{"prometheus-exposes-build-v1"},
+		"name":          "main_prometheus",
+		"template_hash": "prometheus-exposes-build-v1",
 	})
 	if relationshipCount != 1 {
 		t.Fatalf("expected exactly one EXPOSES_BUILD relationship, got %d", relationshipCount)
@@ -627,12 +627,12 @@ RETURN count(n) AS count
 	}
 
 	if emptyFieldCount := readCount(ctx, t, session, `
-MATCH (:Entity:Prometheus {name: $name})-[r:EXPOSES_BUILD {template_hashes: $template_hashes, origin: "auto"}]->(:Entity:BuildVersion)
+MATCH (:Entity:Prometheus {name: $name})-[r:EXPOSES_BUILD {template_hash: $template_hash, origin: "auto"}]->(:Entity:BuildVersion)
 WHERE r.rel_uid IS NULL OR r.updated_at IS NULL OR r.created_at IS NULL
 RETURN count(r) AS count
 `, map[string]any{
-		"name":            "main_prometheus",
-		"template_hashes": []string{"prometheus-exposes-build-v1"},
+		"name":          "main_prometheus",
+		"template_hash": "prometheus-exposes-build-v1",
 	}); emptyFieldCount != 0 {
 		t.Fatalf("expected automatic relationship fields to be populated, got %d invalid relationships", emptyFieldCount)
 	}

@@ -157,6 +157,7 @@ Também deve suportar `property_transforms`, com arquitetura extensível, inclui
 
 - `TO_UPPER`
 - `TO_LOWER`
+- `REGEX`, com `pattern` e `output` usando referencias como `$1` e `$2`
 
 ### 4.7 Expiração lógica
 
@@ -237,7 +238,7 @@ Para nodes:
 Para relacionamentos:
 
 - `template_hash` é a entrada canônica de configuração
-- a persistência usa `template_hashes` com um único item
+- a persistência usa `template_hash` como string
 - `rel_uid` estável deve ser gerado automaticamente
 - quando houver múltiplos matches em `source` e `target`, o sistema deve criar o produto cartesiano entre os pares
 
@@ -248,7 +249,9 @@ O pipeline de persistência deve gerar ou manter:
 - label base `Entity` para nodes
 - `origin = "auto"`
 - `node_uid`
+- `template_hashes` para nodes
 - `rel_uid`
+- `template_hash` para relacionamentos
 - `created_at`
 - `updated_at`
 - `expires_at` quando aplicável

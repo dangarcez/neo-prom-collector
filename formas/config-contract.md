@@ -71,6 +71,11 @@ sources:
               - property: name
                 process:
                   - type: TO_UPPER
+              - property: owner
+                process:
+                  - type: REGEX
+                    pattern: "/(\\w+)_(\\w+)/"
+                    output: "$1_and_$2"
 
         relationships:
           - type: BELONGS_TO
@@ -248,19 +253,33 @@ property_transforms:
   - property: name
     process:
       - type: TO_UPPER
+  - property: metric_name
+    process:
+      - type: REGEX
+        pattern: "/(\\w+)_(\\w+)/"
+        output: "$1_and_$2"
 ```
 
 Processors suportados na base do contrato:
 
 - `TO_UPPER`
 - `TO_LOWER`
+- `REGEX`
+
+Campos adicionais de `REGEX`:
+
+- `pattern`: padrão regex com ao menos um grupo de captura
+- `output`: saída gerada a partir dos grupos, usando `$1`, `$2`, etc.
 
 Regras:
 
 - roda depois de `static_properties`, `label_properties` e `conditional_properties`
 - roda antes dos campos automáticos
 - se a propriedade não existir, o transform é ignorado
-- se o valor não for string, `TO_UPPER` e `TO_LOWER` são ignorados
+- se o valor não for string, `TO_UPPER`, `TO_LOWER` e `REGEX` são ignorados
+- se `REGEX` não encontrar match, a propriedade fica inalterada
+- `REGEX` aceita padrões com ou sem delimitadores `/.../`
+- `REGEX` precisa referenciar ao menos um grupo existente no `output`
 
 ### `expiration_time_min`
 
@@ -338,6 +357,7 @@ Se uma source não produzir `value` ou `timestamp`, jobs que dependam desses tok
 
 - label base `Entity`
 - `node_uid`
+- `template_hashes`
 - `origin = "auto"`
 - `created_at`
 - `updated_at`
@@ -346,6 +366,7 @@ Se uma source não produzir `value` ou `timestamp`, jobs que dependam desses tok
 ### Relacionamentos
 
 - `rel_uid`
+- `template_hash`
 - `origin = "auto"`
 - `created_at`
 - `updated_at`
@@ -354,7 +375,7 @@ Se uma source não produzir `value` ou `timestamp`, jobs que dependam desses tok
 Observação:
 
 - para relacionamentos, a entrada canônica é `template_hash`
-- a persistência usa `template_hashes` com um único item
+- a persistência usa `template_hash` como string
 
 ## Regras de Validação Importantes
 
@@ -375,6 +396,7 @@ O contrato deve falhar antes da execução contínua em casos como:
 - `source` ou `target` sem atributos de match
 - `update_policy` fora de `create`, `merge`, `merge_at_change`
 - `property_transforms` inválido
+- `property_transforms[].process[]` do tipo `REGEX` sem `pattern`, sem `output`, sem referencia a grupo, sem grupo de captura ou com referencia a grupo inexistente
 - `expiration_time_min <= 0` quando informado
 
 ## Observações de Compatibilidade com o Coletor Atual

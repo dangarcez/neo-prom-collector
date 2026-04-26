@@ -331,12 +331,14 @@ Cada template de relacionamento e avaliado contra cada datapoint retornado pela 
 
 ### Observacao importante sobre persistencia
 
-Na configuracao, relacionamento usa `template_hash` singular como entrada canonica. Durante a construcao da mutacao para o grafo, esse valor e persistido como `template_hashes` com um unico item.
+Na configuracao, relacionamento usa `template_hash` singular como entrada canonica. Durante a construcao da mutacao para o grafo, esse valor tambem e persistido como `template_hash` string.
 
 Exemplo:
 
 - config: `template_hash: namespace-pod-v1`
-- propriedade persistida no Neo4j: `template_hashes: ["namespace-pod-v1"]`
+- propriedade persistida no Neo4j: `template_hash: "namespace-pod-v1"`
+
+Relacionamentos antigos que ainda tenham `template_hashes: ["..."]` podem ser reconhecidos para evitar duplicacao durante a transicao, mas novas criacoes e atualizacoes escrevem `template_hash` singular.
 
 ## Source e Target
 
@@ -491,7 +493,9 @@ Cada item de `process` e um objeto com:
 
 | Campo | Tipo | Obrigatorio | Descricao |
 | --- | --- | --- | --- |
-| `type` | string | sim | Processor a aplicar. Na versao atual: `TO_UPPER` ou `TO_LOWER`. |
+| `type` | string | sim | Processor a aplicar. Na versao atual: `TO_UPPER`, `TO_LOWER` ou `REGEX`. |
+| `pattern` | string | condicional | Obrigatorio para `REGEX`. Define o padrao regex com ao menos um grupo de captura. |
+| `output` | string | condicional | Obrigatorio para `REGEX`. Define a saida usando `$1`, `$2`, etc. para referenciar grupos. |
 
 Exemplo em node:
 
@@ -503,6 +507,11 @@ property_transforms:
   - property: environment
     process:
       - type: TO_LOWER
+  - property: metric_name
+    process:
+      - type: REGEX
+        pattern: "/(\\w+)_(\\w+)/"
+        output: "$1_and_$2"
 ```
 
 Exemplo em relacionamento:
@@ -517,9 +526,12 @@ property_transforms:
 Comportamento:
 
 - o bloco roda depois de `static_properties`, `label_properties` e `conditional_properties`
-- o bloco roda antes da injecao de `node_uid`, `rel_uid`, `template_hashes`, `origin`, `created_at`, `updated_at` e `expires_at`
+- o bloco roda antes da injecao de `node_uid`, `rel_uid`, `template_hashes` em nodes, `template_hash` em relacionamentos, `origin`, `created_at`, `updated_at` e `expires_at`
 - se a propriedade alvo nao existir no mapa final, o item e ignorado
 - se o valor existir mas nao for `string`, `TO_UPPER` e `TO_LOWER` sao ignorados para aquela propriedade
+- se `REGEX` nao encontrar match, a propriedade permanece inalterada
+- `REGEX` aceita padroes com ou sem delimitadores `/.../`; os delimitadores sao removidos antes da compilacao
+- `REGEX` exige ao menos um grupo de captura e `output` precisa referenciar ao menos um grupo existente, como `$1` e `$2`
 - em node, transformar `name` muda o `name` final e o `node_uid` derivado dele
 - em relacionamento, `property_transforms` afeta apenas `properties`; `source` e `target` nao participam desse pipeline
 - a ordem da lista `process` importa; a saida de um processor vira a entrada do proximo
@@ -731,6 +743,7 @@ O bootstrap falha antes de iniciar o scheduler quando encontrar erros como:
 - condicoes com mais de um operador
 - `conditional_properties` sem `name`, `type` valido ou `conditions`
 - `property_transforms` sem `property`, sem `process` ou com `process[].type` nao suportado
+- `property_transforms[].process[]` do tipo `REGEX` sem `pattern`, sem `output`, sem referencia a grupo, sem grupo de captura ou com referencia a grupo inexistente
 - `expiration_time_min <= 0` quando informado
 
 ## Erros comuns de modelagem
@@ -752,7 +765,7 @@ Se um token em `label_properties` ou em `conditional_properties` do tipo `label`
 
 ### 4. Esperar transformacao sobre campo automatico
 
-`property_transforms` roda antes da injecao dos campos automaticos. Isso significa que ele pode atuar sobre propriedades declaradas no YAML, inclusive `name`, mas nao sobre `node_uid`, `rel_uid`, `template_hashes`, `origin`, `created_at`, `updated_at` ou `expires_at`.
+`property_transforms` roda antes da injecao dos campos automaticos. Isso significa que ele pode atuar sobre propriedades declaradas no YAML, inclusive `name`, mas nao sobre `node_uid`, `rel_uid`, `template_hashes` em nodes, `template_hash` em relacionamentos, `origin`, `created_at`, `updated_at` ou `expires_at`.
 
 ### 5. Esperar criacao automatica de nodes a partir de relacionamento
 

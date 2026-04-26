@@ -17,6 +17,7 @@ var automaticNodeProperties = map[string]struct{}{
 
 var automaticRelationshipProperties = map[string]struct{}{
 	"rel_uid":         {},
+	"template_hash":   {},
 	"template_hashes": {},
 	"origin":          {},
 	"created_at":      {},

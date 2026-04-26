@@ -38,6 +38,10 @@ O yaml vai ser construido dessa maneira:
 ### Propriedades de node com condicao
    Sao propriedades que vao ser setadas de acordo com condicoes. Essa propriedades vao ter 2 tipo, label e static, que indica a origem do valor da propriedade criada. As concicoes tambem vao ter 2 tipos, label e value, que indica oque vai ser comparado, se vai ser o valor de uma label ou o value do datapoint. 
 
+### Processamento de propriedades de node
+   Depois de resolver propriedades estaticas, dinamicas e condicionais, o usuario deve poder declarar `property_transforms` para processar propriedades ja resolvidas. Os processors suportados incluem `TO_UPPER`, `TO_LOWER` e `REGEX`.
+   O processor `REGEX` deve receber `pattern` e `output`. O `pattern` deve conter ao menos um grupo de captura. O `output` deve poder referenciar grupos usando `$1`, `$2`, etc. Exemplo: valor `cpu_vru`, pattern `/(\w+)_(\w+)/` e output `$1_and_$2` resultam em `cpu_and_vru`.
+
 ### Condições para o node ser criado
    Essas condições podem ter 2 tipos, label e value. Para label deve ter 2 comparacoes, equals ou not_equals . Para value 3, equals, not_equals, greaterThan, lessThan 
 
@@ -56,7 +60,7 @@ Alem dessas configurações no yaml, para cada node a aplicação deve criar par
 
 ### Campos obritório e manuais:
    "Type": no campo type o usuário deve colocar o tipo (label) da que relacionamento.
-   "template_hashes": este campo é uma string, onde o usuário vai setar manualmente para cada relacionamento também 
+   "template_hash": este campo é uma string, onde o usuário vai setar manualmente para cada relacionamento também. `template_hashes` pode ser aceito apenas como alias de compatibilidade na configuração, com um único item.
    "update_policy": define se a relacionamento deve ser criado ou atualizado se ja existir (valor merge), ou se deve ser apenas criado se nao existe (valor create, este é o default caso o update_policy nao seja especificado)
 
 ### Propriedade de relacionamento estáticos
@@ -65,6 +69,9 @@ Alem dessas configurações no yaml, para cada node a aplicação deve criar par
    Esta propriedades definidas no relacionamento a ser criado devem vir de labels dos datapoints, então o usuário vai relecionar o nome do campo no node do neo4j e de qual label o valor desse campo vai ser originado. O usuário também deve ter possibilidade de colocar outros valores dinamicos para essas propriedades, como por exemplo o "value" do datapoint, ou o timestamp.
 ### Propriedades de relacionamento com condicao
    Sao propriedades que vao ser setadas de acordo com condicoes. Essa propriedades vao ter 2 tipo, label e static, que indica a origem do valor da propriedade criada. As concicoes tambem vao ter 2 tipos, label e value, que indica oque vai ser comparado, se vai ser o valor de uma label ou o value do datapoint. 
+
+### Processamento de propriedades de relacionamento
+   Relacionamentos devem suportar o mesmo bloco `property_transforms` dos nodes, com processors `TO_UPPER`, `TO_LOWER` e `REGEX`. O processor `REGEX` deve usar `pattern` e `output` para gerar o novo valor da propriedade a partir de grupos de captura.
 
 ### Condições para o node ser criado
    Essas condições podem ter 2 tipos, label e value. Para label deve ter 2 comparacoes, equals ou not_equals . Para value 3, equals, not_equals, greaterThan, lessThan 
@@ -75,7 +82,8 @@ Alem disso, cada relacionamento vai ter 2 objetos, o node de origem e node de de
 
 Alem dessas configurações no yaml, para cada relacionamento a aplicação deve criar para os relacionamentos:
 ### Campos criados automáticamento pela aplicação
-   - `node_uid`: UUID estavel em formato string , esse uuid deve ser gerado pelo script
+   - `rel_uid`: UUID estavel em formato string , esse uuid deve ser gerado pelo script
+   - `template_hash`: string canonica do template do relacionamento
    - campo `origin = "auto"`
    - campo `created_at` em ISO 8601 
    - campo `updated_at` em ISO 8601 
@@ -98,4 +106,3 @@ Regras para manter consistencia:
    Instruções e artefatos para build e deploy da solução em container docker (alem de execução local)
    Diretorio docs/ para documentações
    read.me explicando projeto e sua estrutura. 
-

@@ -168,19 +168,21 @@ func (r *Repository) countRelationshipsByIdentity(
 		return 0, err
 	}
 
-	templateHashes := relationshipTemplateHashes(relationship)
+	templateHash := relationshipTemplateHash(relationship)
 
 	query := fmt.Sprintf(`
 MATCH (source) WHERE elementId(source) = $source_id
 MATCH (target) WHERE elementId(target) = $target_id
-OPTIONAL MATCH (source)-[rel:%s {template_hashes: $template_hashes}]->(target)
+OPTIONAL MATCH (source)-[rel:%s]->(target)
+WHERE rel.template_hash = $template_hash OR rel.template_hashes = $legacy_template_hashes
 RETURN count(rel) AS count
 `, relationshipType)
 
 	count, err := executeCountQuery(ctx, tx, query, map[string]any{
-		"source_id":       sourceID,
-		"target_id":       targetID,
-		"template_hashes": templateHashes,
+		"source_id":              sourceID,
+		"target_id":              targetID,
+		"template_hash":          templateHash,
+		"legacy_template_hashes": legacyRelationshipTemplateHashes(templateHash),
 	}, "count")
 	if err != nil {
 		return 0, fmt.Errorf("count existing relationships: %w", err)
@@ -203,6 +205,8 @@ func (r *Repository) createRelationship(
 	}
 
 	properties := cloneMap(relationship.Properties)
+	delete(properties, "template_hashes")
+	properties["template_hash"] = relationshipTemplateHash(relationship)
 	nowText := now.Format(time.RFC3339)
 	properties["created_at"] = nowText
 	properties["updated_at"] = nowText
@@ -235,20 +239,22 @@ func (r *Repository) loadRelationshipPropertiesByIdentity(
 		return nil, err
 	}
 
-	templateHashes := relationshipTemplateHashes(relationship)
+	templateHash := relationshipTemplateHash(relationship)
 
 	query := fmt.Sprintf(`
 MATCH (source) WHERE elementId(source) = $source_id
 MATCH (target) WHERE elementId(target) = $target_id
-MATCH (source)-[rel:%s {template_hashes: $template_hashes}]->(target)
+MATCH (source)-[rel:%s]->(target)
+WHERE rel.template_hash = $template_hash OR rel.template_hashes = $legacy_template_hashes
 RETURN properties(rel) AS properties
 LIMIT 1
 `, relationshipType)
 
 	result, err := tx.Run(ctx, query, map[string]any{
-		"source_id":       sourceID,
-		"target_id":       targetID,
-		"template_hashes": templateHashes,
+		"source_id":              sourceID,
+		"target_id":              targetID,
+		"template_hash":          templateHash,
+		"legacy_template_hashes": legacyRelationshipTemplateHashes(templateHash),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("run relationship properties query: %w", err)
@@ -291,43 +297,57 @@ func (r *Repository) updateRelationship(
 		return "", err
 	}
 
-	templateHashes := relationshipTemplateHashes(relationship)
+	templateHash := relationshipTemplateHash(relationship)
 
 	properties := cloneMap(relationship.Properties)
+	delete(properties, "template_hashes")
+	properties["template_hash"] = templateHash
 	properties["updated_at"] = now.Format(time.RFC3339)
 	applyExpiration(properties, relationship.UpdatePolicy, relationship.ExpirationTimeMin, now)
 
 	query := fmt.Sprintf(`
 MATCH (source) WHERE elementId(source) = $source_id
 MATCH (target) WHERE elementId(target) = $target_id
-MATCH (source)-[rel:%s {template_hashes: $template_hashes}]->(target)
+MATCH (source)-[rel:%s]->(target)
+WHERE rel.template_hash = $template_hash OR rel.template_hashes = $legacy_template_hashes
 SET rel += $properties
+REMOVE rel.template_hashes
 RETURN 'updated' AS action
 `, relationshipType)
 
 	return executeActionQuery(ctx, tx, query, map[string]any{
-		"source_id":       sourceID,
-		"target_id":       targetID,
-		"template_hashes": templateHashes,
-		"properties":      properties,
+		"source_id":              sourceID,
+		"target_id":              targetID,
+		"template_hash":          templateHash,
+		"legacy_template_hashes": legacyRelationshipTemplateHashes(templateHash),
+		"properties":             properties,
 	})
 }
 
-func relationshipTemplateHashes(relationship domain.GraphRelationship) []string {
+func relationshipTemplateHash(relationship domain.GraphRelationship) string {
+	if value, ok := relationship.Properties["template_hash"]; ok && value != nil {
+		return fmt.Sprint(value)
+	}
+
 	if value, ok := relationship.Properties["template_hashes"]; ok {
 		switch typed := value.(type) {
 		case []string:
-			return append([]string(nil), typed...)
-		case []any:
-			hashes := make([]string, 0, len(typed))
-			for _, item := range typed {
-				hashes = append(hashes, fmt.Sprint(item))
+			if len(typed) > 0 {
+				return typed[0]
 			}
-			return hashes
+		case []any:
+			if len(typed) > 0 {
+				return fmt.Sprint(typed[0])
+			}
 		}
 	}
-	if relationship.TemplateHash == "" {
+
+	return relationship.TemplateHash
+}
+
+func legacyRelationshipTemplateHashes(templateHash string) []string {
+	if templateHash == "" {
 		return nil
 	}
-	return []string{relationship.TemplateHash}
+	return []string{templateHash}
 }

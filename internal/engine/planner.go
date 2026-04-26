@@ -105,7 +105,7 @@ func (p *Planner) Plan(job config.JobConfig, datapoint domain.Datapoint) (domain
 		uid := RelationshipUID(relationshipTemplate.Type, templateHash, source, target)
 
 		properties["rel_uid"] = uid
-		properties["template_hashes"] = []string{templateHash}
+		properties["template_hash"] = templateHash
 		properties["origin"] = "auto"
 
 		plan.Relationships = append(plan.Relationships, domain.GraphRelationship{

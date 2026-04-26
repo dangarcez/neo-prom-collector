@@ -62,6 +62,11 @@ func TestValidateFileConfigAcceptsPropertyTransforms(t *testing.T) {
 			Property: "name",
 			Process: []PropertyProcessorConfig{
 				{Type: "to_upper"},
+				{
+					Type:    "regex",
+					Pattern: `/(\w+)_(\w+)/`,
+					Output:  "$1_and_$2",
+				},
 			},
 		},
 	}
@@ -78,12 +83,143 @@ func TestValidateFileConfigAcceptsPropertyTransforms(t *testing.T) {
 	if got := cfg.PromTargets[0].Jobs[0].Nodes[0].PropertyTransforms[0].Process[0].Type; got != PropertyProcessorTypeToUpper {
 		t.Fatalf("expected node processor type to normalize to %q, got %q", PropertyProcessorTypeToUpper, got)
 	}
+	if got := cfg.PromTargets[0].Jobs[0].Nodes[0].PropertyTransforms[0].Process[1].Type; got != PropertyProcessorTypeRegex {
+		t.Fatalf("expected node regex processor type to normalize to %q, got %q", PropertyProcessorTypeRegex, got)
+	}
 	if got := cfg.PromTargets[0].Jobs[0].Relationships[0].PropertyTransforms[0].Process[0].Type; got != PropertyProcessorTypeToLower {
 		t.Fatalf("expected relationship processor type to normalize to %q, got %q", PropertyProcessorTypeToLower, got)
 	}
 
 	if err := ValidateFileConfig(cfg); err != nil {
 		t.Fatalf("expected config to accept property_transforms, got error: %v", err)
+	}
+}
+
+func TestValidateFileConfigRejectsRegexPropertyTransformWithoutPattern(t *testing.T) {
+	cfg := validFileConfig()
+	cfg.PromTargets[0].Jobs[0].Nodes[0].PropertyTransforms = []PropertyTransformConfig{
+		{
+			Property: "name",
+			Process: []PropertyProcessorConfig{
+				{
+					Type:   PropertyProcessorTypeRegex,
+					Output: "$1",
+				},
+			},
+		},
+	}
+	cfg.Normalize()
+
+	err := ValidateFileConfig(cfg)
+	if err == nil {
+		t.Fatal("expected validation to fail when regex property transform has no pattern")
+	}
+
+	if !strings.Contains(err.Error(), "pattern is required") {
+		t.Fatalf("expected pattern required error, got: %v", err)
+	}
+}
+
+func TestValidateFileConfigRejectsRegexPropertyTransformWithoutOutput(t *testing.T) {
+	cfg := validFileConfig()
+	cfg.PromTargets[0].Jobs[0].Nodes[0].PropertyTransforms = []PropertyTransformConfig{
+		{
+			Property: "name",
+			Process: []PropertyProcessorConfig{
+				{
+					Type:    PropertyProcessorTypeRegex,
+					Pattern: `/(\w+)_(\w+)/`,
+				},
+			},
+		},
+	}
+	cfg.Normalize()
+
+	err := ValidateFileConfig(cfg)
+	if err == nil {
+		t.Fatal("expected validation to fail when regex property transform has no output")
+	}
+
+	if !strings.Contains(err.Error(), "output is required") {
+		t.Fatalf("expected output required error, got: %v", err)
+	}
+}
+
+func TestValidateFileConfigRejectsRegexPropertyTransformWithoutGroups(t *testing.T) {
+	cfg := validFileConfig()
+	cfg.PromTargets[0].Jobs[0].Nodes[0].PropertyTransforms = []PropertyTransformConfig{
+		{
+			Property: "name",
+			Process: []PropertyProcessorConfig{
+				{
+					Type:    PropertyProcessorTypeRegex,
+					Pattern: `\w+_\w+`,
+					Output:  "$1",
+				},
+			},
+		},
+	}
+	cfg.Normalize()
+
+	err := ValidateFileConfig(cfg)
+	if err == nil {
+		t.Fatal("expected validation to fail when regex property transform has no capture groups")
+	}
+
+	if !strings.Contains(err.Error(), "capture group") {
+		t.Fatalf("expected capture group error, got: %v", err)
+	}
+}
+
+func TestValidateFileConfigRejectsRegexPropertyTransformWithoutOutputGroupReference(t *testing.T) {
+	cfg := validFileConfig()
+	cfg.PromTargets[0].Jobs[0].Nodes[0].PropertyTransforms = []PropertyTransformConfig{
+		{
+			Property: "name",
+			Process: []PropertyProcessorConfig{
+				{
+					Type:    PropertyProcessorTypeRegex,
+					Pattern: `/(\w+)_(\w+)/`,
+					Output:  "constant",
+				},
+			},
+		},
+	}
+	cfg.Normalize()
+
+	err := ValidateFileConfig(cfg)
+	if err == nil {
+		t.Fatal("expected validation to fail when regex output does not reference a capture group")
+	}
+
+	if !strings.Contains(err.Error(), "at least one capture group") {
+		t.Fatalf("expected output group reference error, got: %v", err)
+	}
+}
+
+func TestValidateFileConfigRejectsRegexPropertyTransformWithUnknownGroupReference(t *testing.T) {
+	cfg := validFileConfig()
+	cfg.PromTargets[0].Jobs[0].Nodes[0].PropertyTransforms = []PropertyTransformConfig{
+		{
+			Property: "name",
+			Process: []PropertyProcessorConfig{
+				{
+					Type:    PropertyProcessorTypeRegex,
+					Pattern: `/(\w+)_(\w+)/`,
+					Output:  "$1_and_$3",
+				},
+			},
+		},
+	}
+	cfg.Normalize()
+
+	err := ValidateFileConfig(cfg)
+	if err == nil {
+		t.Fatal("expected validation to fail when regex output references an unknown group")
+	}
+
+	if !strings.Contains(err.Error(), "references $3") {
+		t.Fatalf("expected group reference error, got: %v", err)
 	}
 }
 

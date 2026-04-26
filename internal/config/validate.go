@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -244,12 +246,72 @@ func validatePropertyTransforms(path string, transforms []PropertyTransformConfi
 				return fmt.Errorf("%s.type is required", processorPath)
 			}
 			if !IsSupportedPropertyProcessorType(processor.Type) {
-				return fmt.Errorf("%s.type must be %s or %s", processorPath, PropertyProcessorTypeToUpper, PropertyProcessorTypeToLower)
+				return fmt.Errorf("%s.type must be %s, %s or %s", processorPath, PropertyProcessorTypeToUpper, PropertyProcessorTypeToLower, PropertyProcessorTypeRegex)
+			}
+			if err := validatePropertyProcessor(processorPath, processor); err != nil {
+				return err
 			}
 		}
 	}
 
 	return nil
+}
+
+func validatePropertyProcessor(path string, processor PropertyProcessorConfig) error {
+	switch NormalizePropertyProcessorType(processor.Type) {
+	case PropertyProcessorTypeRegex:
+		return validateRegexPropertyProcessor(path, processor)
+	default:
+		return nil
+	}
+}
+
+func validateRegexPropertyProcessor(path string, processor PropertyProcessorConfig) error {
+	pattern := NormalizeRegexPattern(processor.Pattern)
+	if pattern == "" {
+		return fmt.Errorf("%s.pattern is required for %s processors", path, PropertyProcessorTypeRegex)
+	}
+
+	if strings.TrimSpace(processor.Output) == "" {
+		return fmt.Errorf("%s.output is required for %s processors", path, PropertyProcessorTypeRegex)
+	}
+
+	compiled, err := regexp.Compile(pattern)
+	if err != nil {
+		return fmt.Errorf("%s.pattern is invalid: %w", path, err)
+	}
+
+	groupCount := compiled.NumSubexp()
+	if groupCount == 0 {
+		return fmt.Errorf("%s.pattern must define at least one capture group", path)
+	}
+
+	references := regexOutputGroupReferences(processor.Output)
+	if len(references) == 0 {
+		return fmt.Errorf("%s.output must reference at least one capture group", path)
+	}
+	for _, reference := range references {
+		if reference == 0 {
+			return fmt.Errorf("%s.output references $0, but regex output groups start at $1", path)
+		}
+		if reference > groupCount {
+			return fmt.Errorf("%s.output references $%d, but pattern defines only %d capture group(s)", path, reference, groupCount)
+		}
+	}
+
+	return nil
+}
+
+func regexOutputGroupReferences(output string) []int {
+	matches := regexp.MustCompile(`\$(\d+)`).FindAllStringSubmatch(output, -1)
+	references := make([]int, 0, len(matches))
+	for _, match := range matches {
+		reference, err := strconv.Atoi(match[1])
+		if err == nil {
+			references = append(references, reference)
+		}
+	}
+	return references
 }
 
 func validateConditions(path string, conditions []ConditionConfig) error {

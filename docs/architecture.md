@@ -15,7 +15,7 @@ Construir um coletor em Go, executável localmente e em container, que:
 O PRD, o guia `ingestao-automatica.md` e o `config.demo.yaml` têm pequenas inconsistências. Para a arquitetura, o contrato canônico deve ser:
 
 - nodes usam `template_hashes` como lista de strings
-- relacionamentos persistem `template_hashes` como lista de strings (config aceita `template_hash` singular)
+- relacionamentos persistem `template_hash` como string (config aceita `template_hash` singular e `template_hashes` como alias de um item)
 - relacionamentos usam `rel_uid`, não `node_uid`
 - todo node recebe a label base `Entity`
 - `origin` deve ser sempre `"auto"`
@@ -300,7 +300,9 @@ Cada job pode rodar em sua própria goroutine, mas o processamento de datapoints
 
 ### 13. Tratamento explícito de ambiguidades de identidade
 
-Múltiplos matches em source e target são tratados como fan-out controlado, gerando todos os pares possíveis. A ambiguidade que continua sendo erro é encontrar mais de um relacionamento equivalente para o mesmo par source-target e mesmo `template_hashes`, porque isso indica identidade inconsistente no grafo.
+Múltiplos matches em source e target são tratados como fan-out controlado, gerando todos os pares possíveis. A ambiguidade que continua sendo erro é encontrar mais de um relacionamento equivalente para o mesmo par source-target e mesmo `template_hash`, porque isso indica identidade inconsistente no grafo.
+
+Para compatibilidade operacional, o repositório pode reconhecer relacionamentos legados gravados com `template_hashes` de um único item. Novas escritas usam `template_hash` singular.
 
 ## Contrato interno sugerido
 
@@ -361,11 +363,12 @@ Critério de existência:
 - `source`
 - `target`
 - tipo do relacionamento
-- `template_hashes`
+- `template_hash`
 
 Campos automáticos:
 
 - `rel_uid`
+- `template_hash`
 - `origin`
 - `created_at`
 - `updated_at`
