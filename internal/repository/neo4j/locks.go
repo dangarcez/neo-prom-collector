@@ -44,12 +44,12 @@ func lockKey(store *sync.Map, key string) func() {
 
 func nodeLockKey(node domain.GraphNode) string {
 	if node.UID != "" {
-		return "node_uid:" + node.UID
+		return domain.FieldNodeUID + ":" + node.UID
 	}
 
-	if value, ok := node.Properties["node_uid"]; ok && value != nil {
+	if value, ok := node.Properties[domain.FieldNodeUID]; ok && value != nil {
 		if typed, ok := value.(string); ok && typed != "" {
-			return "node_uid:" + typed
+			return domain.FieldNodeUID + ":" + typed
 		}
 	}
 
@@ -57,14 +57,14 @@ func nodeLockKey(node domain.GraphNode) string {
 }
 
 func relationshipLockKey(relationship domain.GraphRelationship) string {
-	if value, ok := relationship.Properties["rel_uid"]; ok && value != nil {
+	if value, ok := relationship.Properties[domain.FieldRelUID]; ok && value != nil {
 		if typed, ok := value.(string); ok && typed != "" {
-			return "rel_uid:" + typed
+			return domain.FieldRelUID + ":" + typed
 		}
 	}
 
 	if relationship.UID != "" {
-		return "rel_uid:" + relationship.UID
+		return domain.FieldRelUID + ":" + relationship.UID
 	}
 
 	return "relationship_type:" + relationship.Type

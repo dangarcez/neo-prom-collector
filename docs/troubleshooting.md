@@ -63,7 +63,8 @@ Revise:
 
 - `update_policy`
 - criterio de identidade por `type` e `name` nos nodes
-- `template_hash` do relacionamento
+- `z4j_template_hash` do relacionamento persistido
+- `z4j_node_uid`, `z4j_rel_uid` e `z4j_origin` nos registros gerados pelo app
 - match de `source` e `target`
 - selectors muito amplos podem gerar fan-out e criar muitos relacionamentos
 

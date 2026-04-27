@@ -221,7 +221,7 @@ Cada template de node e avaliado contra cada datapoint retornado pela query do j
 | `types` | lista de string | condicional | - | Lista de labels tecnicas do node. Deve haver ao menos uma. |
 | `template_hashes` | lista de string | sim | - | Lista de hashes de definicoes associados ao node. |
 | `update_policy` | string | nao | `create` | Politica de persistencia: `create`, `merge` ou `merge_at_change`. |
-| `expiration_time_min` | inteiro | nao | ausente | Quando informado, gera `expires_at` como horario atual UTC + esse numero de minutos. So e aplicado em `create` e `merge`. |
+| `expiration_time_min` | inteiro | nao | ausente | Quando informado, gera `z4j_expires_at` como horario atual UTC + esse numero de minutos. So e aplicado em `create` e `merge`. |
 | `static_properties` | mapa | nao | `{}` | Propriedades literais copiadas para o node. |
 | `label_properties` | mapa string->string | nao | `{}` | Propriedades dinamicas resolvidas a partir de labels ou tokens especiais. |
 | `conditional_properties` | lista | nao | `[]` | Propriedades aplicadas apenas quando suas condicoes passam. |
@@ -297,7 +297,7 @@ Cada template de relacionamento e avaliado contra cada datapoint retornado pela 
 | `template_hash` | string | condicional | - | Hash canonico da definicao de relacionamento. |
 | `template_hashes` | lista de string | condicional | - | Alias aceito apenas quando houver um unico item; sera normalizado para `template_hash`. |
 | `update_policy` | string | nao | `create` | Politica de persistencia: `create`, `merge` ou `merge_at_change`. |
-| `expiration_time_min` | inteiro | nao | ausente | Quando informado, gera `expires_at` como horario atual UTC + esse numero de minutos. So e aplicado em `create` e `merge`. |
+| `expiration_time_min` | inteiro | nao | ausente | Quando informado, gera `z4j_expires_at` como horario atual UTC + esse numero de minutos. So e aplicado em `create` e `merge`. |
 | `static_properties` | mapa | nao | `{}` | Propriedades literais do relacionamento. |
 | `label_properties` | mapa string->string | nao | `{}` | Propriedades dinamicas resolvidas do datapoint. |
 | `conditional_properties` | lista | nao | `[]` | Propriedades aplicadas apenas se as condicoes forem satisfeitas. |
@@ -331,14 +331,14 @@ Cada template de relacionamento e avaliado contra cada datapoint retornado pela 
 
 ### Observacao importante sobre persistencia
 
-Na configuracao, relacionamento usa `template_hash` singular como entrada canonica. Durante a construcao da mutacao para o grafo, esse valor tambem e persistido como `template_hash` string.
+Na configuracao, relacionamento usa `template_hash` singular como entrada canonica. Durante a construcao da mutacao para o grafo, esse valor e persistido como `z4j_template_hash` string.
 
 Exemplo:
 
 - config: `template_hash: namespace-pod-v1`
-- propriedade persistida no Neo4j: `template_hash: "namespace-pod-v1"`
+- propriedade persistida no Neo4j: `z4j_template_hash: "namespace-pod-v1"`
 
-Relacionamentos antigos que ainda tenham `template_hashes: ["..."]` podem ser reconhecidos para evitar duplicacao durante a transicao, mas novas criacoes e atualizacoes escrevem `template_hash` singular.
+Nao ha fallback para relacionamentos antigos gravados com `template_hash` ou `template_hashes` sem prefixo.
 
 ## Source e Target
 
@@ -373,7 +373,7 @@ source:
   type: Namespace
   match_attributes:
     static:
-      origin: auto
+      z4j_origin: auto
     labels:
       name: namespace
 ```
@@ -395,14 +395,16 @@ target:
   match_label_attributes:
     name: pod
   match_static_attributes:
-    origin: auto
+    z4j_origin: auto
 ```
 
 ## Propriedades
 
 Existem quatro formas de definir e ajustar propriedades em nodes e relacionamentos.
 
-Separadamente dessas quatro formas, nodes e relacionamentos tambem podem declarar `expiration_time_min`, que nao escreve uma propriedade de negocio diretamente no planner. Esse campo instrui o repositorio a gerar `expires_at` no momento da escrita, com base no horario atual UTC.
+Separadamente dessas quatro formas, nodes e relacionamentos tambem podem declarar `expiration_time_min`, que nao escreve uma propriedade de negocio diretamente no planner. Esse campo instrui o repositorio a gerar `z4j_expires_at` no momento da escrita, com base no horario atual UTC.
+
+O prefixo `z4j_` e reservado para campos automaticos ou semiautomaticos do app. Propriedades criadas pelo usuario em `static_properties`, `label_properties`, `conditional_properties` e `property_transforms.property` nao podem usar esse prefixo.
 
 ### `static_properties`
 
@@ -526,13 +528,13 @@ property_transforms:
 Comportamento:
 
 - o bloco roda depois de `static_properties`, `label_properties` e `conditional_properties`
-- o bloco roda antes da injecao de `node_uid`, `rel_uid`, `template_hashes` em nodes, `template_hash` em relacionamentos, `origin`, `created_at`, `updated_at` e `expires_at`
+- o bloco roda antes da injecao de `z4j_node_uid`, `z4j_rel_uid`, `z4j_template_hashes` em nodes, `z4j_template_hash` em relacionamentos, `z4j_origin`, `z4j_created_at`, `z4j_updated_at` e `z4j_expires_at`
 - se a propriedade alvo nao existir no mapa final, o item e ignorado
 - se o valor existir mas nao for `string`, `TO_UPPER` e `TO_LOWER` sao ignorados para aquela propriedade
 - se `REGEX` nao encontrar match, a propriedade permanece inalterada
 - `REGEX` aceita padroes com ou sem delimitadores `/.../`; os delimitadores sao removidos antes da compilacao
 - `REGEX` exige ao menos um grupo de captura e `output` precisa referenciar ao menos um grupo existente, como `$1` e `$2`
-- em node, transformar `name` muda o `name` final e o `node_uid` derivado dele
+- em node, transformar `name` muda o `name` final e o `z4j_node_uid` derivado dele
 - em relacionamento, `property_transforms` afeta apenas `properties`; `source` e `target` nao participam desse pipeline
 - a ordem da lista `process` importa; a saida de um processor vira a entrada do proximo
 
@@ -545,19 +547,19 @@ Campo opcional em:
 
 Quando informado, o repositorio calcula automaticamente:
 
-- `expires_at = horario_atual_utc + expiration_time_min`
+- `z4j_expires_at = horario_atual_utc + expiration_time_min`
 
 Formato persistido:
 
-- `expires_at` em RFC3339 UTC
+- `z4j_expires_at` em RFC3339 UTC
 
 Regras:
 
 - `expiration_time_min` deve ser maior que zero quando informado
-- `expires_at` nao e criado pelo planner; ele e injetado no momento da persistencia
-- `expires_at` e aplicado em policies `create` e `merge`
-- `expires_at` nao e criado nem renovado quando a template usa `merge_at_change`
-- `expires_at` e tratado como campo automatico, no mesmo grupo de `created_at` e `updated_at`
+- `z4j_expires_at` nao e criado pelo planner; ele e injetado no momento da persistencia
+- `z4j_expires_at` e aplicado em policies `create` e `merge`
+- `z4j_expires_at` nao e criado nem renovado quando a template usa `merge_at_change`
+- `z4j_expires_at` e tratado como campo automatico, no mesmo grupo de `z4j_created_at` e `z4j_updated_at`
 
 Exemplo:
 
@@ -582,7 +584,7 @@ As propriedades sao resolvidas nesta ordem:
 
 Se a mesma chave aparecer mais de uma vez, a ultima atribuicao vence.
 
-Depois disso, na camada de persistencia, a aplicacao ainda pode injetar campos automaticos como `node_uid`, `rel_uid`, `origin`, `created_at`, `updated_at` e `expires_at`.
+Depois disso, na camada de persistencia, a aplicacao ainda pode injetar campos automaticos como `z4j_node_uid`, `z4j_rel_uid`, `z4j_template_hashes`, `z4j_template_hash`, `z4j_origin`, `z4j_created_at`, `z4j_updated_at` e `z4j_expires_at`.
 
 ## Condicoes
 
@@ -679,21 +681,21 @@ Valores:
 
 - cria somente se a entidade equivalente ainda nao existir
 - se ja existir, a mutacao e ignorada
-- se `expiration_time_min` estiver configurado, cria `expires_at` no momento da insercao
+- se `expiration_time_min` estiver configurado, cria `z4j_expires_at` no momento da insercao
 
 `merge`
 
 - cria quando nao existe
 - atualiza propriedades quando ja existe
-- se `expiration_time_min` estiver configurado, cria ou renova `expires_at`
+- se `expiration_time_min` estiver configurado, cria ou renova `z4j_expires_at`
 
 `merge_at_change`
 
 - cria quando nao existe
-- compara apenas os atributos definidos no YAML, ignorando campos automaticos
+- compara apenas os atributos definidos no YAML, ignorando campos automaticos `z4j_*`
 - se nada mudou nos atributos de negocio, nao atualiza a entidade
-- se algo mudou, atualiza propriedades e renova `updated_at`
-- mesmo quando `expiration_time_min` estiver configurado, `expires_at` nao e criado nem renovado nessa policy
+- se algo mudou, atualiza propriedades e renova `z4j_updated_at`
+- mesmo quando `expiration_time_min` estiver configurado, `z4j_expires_at` nao e criado nem renovado nessa policy
 
 Se o campo for omitido, o default e `create`.
 
@@ -710,7 +712,7 @@ Se o campo for omitido, o default e `create`.
 - `nodes[].update_policy`: `create`
 - `relationships[].update_policy`: `create`
 - mapas de propriedades ausentes sao normalizados para objetos vazios
-- `expiration_time_min` ausente nao gera `expires_at`
+- `expiration_time_min` ausente nao gera `z4j_expires_at`
 
 ### Normalizacoes aceitas
 
@@ -744,6 +746,7 @@ O bootstrap falha antes de iniciar o scheduler quando encontrar erros como:
 - `conditional_properties` sem `name`, `type` valido ou `conditions`
 - `property_transforms` sem `property`, sem `process` ou com `process[].type` nao suportado
 - `property_transforms[].process[]` do tipo `REGEX` sem `pattern`, sem `output`, sem referencia a grupo, sem grupo de captura ou com referencia a grupo inexistente
+- propriedades de usuario com prefixo reservado `z4j_`
 - `expiration_time_min <= 0` quando informado
 
 ## Erros comuns de modelagem
@@ -765,7 +768,7 @@ Se um token em `label_properties` ou em `conditional_properties` do tipo `label`
 
 ### 4. Esperar transformacao sobre campo automatico
 
-`property_transforms` roda antes da injecao dos campos automaticos. Isso significa que ele pode atuar sobre propriedades declaradas no YAML, inclusive `name`, mas nao sobre `node_uid`, `rel_uid`, `template_hashes` em nodes, `template_hash` em relacionamentos, `origin`, `created_at`, `updated_at` ou `expires_at`.
+`property_transforms` roda antes da injecao dos campos automaticos. Isso significa que ele pode atuar sobre propriedades declaradas no YAML, inclusive `name`, mas nao sobre `z4j_node_uid`, `z4j_rel_uid`, `z4j_template_hashes` em nodes, `z4j_template_hash` em relacionamentos, `z4j_origin`, `z4j_created_at`, `z4j_updated_at` ou `z4j_expires_at`.
 
 ### 5. Esperar criacao automatica de nodes a partir de relacionamento
 

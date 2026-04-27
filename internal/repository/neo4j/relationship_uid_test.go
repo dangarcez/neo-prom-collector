@@ -65,6 +65,6 @@ func TestRelationshipUIDForMatchFallsBackToElementID(t *testing.T) {
 
 	uid := relationshipUIDForMatch(relationship, sourceMatch, targetMatch)
 	if uid == "" {
-		t.Fatal("expected relationship uid to be generated even without node_uid")
+		t.Fatal("expected relationship uid to be generated even without z4j_node_uid")
 	}
 }

@@ -12,7 +12,7 @@ func applyExpiration(properties map[string]any, updatePolicy domain.UpdatePolicy
 	}
 
 	expiresAt := now.UTC().Add(time.Duration(*expirationTimeMin) * time.Minute).Format(time.RFC3339)
-	properties["expires_at"] = expiresAt
+	properties[domain.FieldExpiresAt] = expiresAt
 }
 
 func shouldSetExpiration(updatePolicy domain.UpdatePolicy, expirationTimeMin *int) bool {

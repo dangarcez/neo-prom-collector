@@ -14,7 +14,7 @@ func relationshipForMatch(
 	targetMatch matchedNode,
 ) domain.GraphRelationship {
 	properties := cloneMap(relationship.Properties)
-	properties["rel_uid"] = relationshipUIDForMatch(relationship, sourceMatch, targetMatch)
+	properties[domain.FieldRelUID] = relationshipUIDForMatch(relationship, sourceMatch, targetMatch)
 	relationship.Properties = properties
 	return relationship
 }
@@ -33,7 +33,7 @@ func relationshipUIDForMatch(
 
 func matchedNodeIdentity(node matchedNode) string {
 	if node.UID != "" {
-		return "node_uid:" + node.UID
+		return domain.FieldNodeUID + ":" + node.UID
 	}
 	return "element_id:" + node.ElementID
 }

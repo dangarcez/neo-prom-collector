@@ -37,7 +37,7 @@ Entregar uma versao funcional que rode localmente, leia `.env` e YAML, consulte 
 8. Implementar cliente Neo4j
    - habilita persistencia no grafo
 9. Implementar gerador de identidades estaveis
-   - garante `node_uid` e `rel_uid` deterministicos
+   - garante `z4j_node_uid` e `z4j_rel_uid` deterministicos
 10. Implementar avaliacao de condicoes
    - habilita elegibilidade de nodes e relacionamentos
 11. Implementar resolucao de propriedades
@@ -152,7 +152,7 @@ Fechar a entrega com validacao integrada real e documentacao consolidada para op
 
 - ambiguidade no criterio de existencia de nodes e relacionamentos
 - normalizacao incompleta entre `type` e `types`
-- diferenca entre `template_hash` e `template_hashes`
+- diferenca entre `template_hash`/`template_hashes` de configuracao e `z4j_template_hash`/`z4j_template_hashes` persistidos
 - geracao incorreta de IDs estaveis
 - match ambiguo de source e target em relacionamentos
 - queries Prometheus retornando alto volume sem controle de concorrencia
@@ -164,7 +164,7 @@ Fechar a entrega com validacao integrada real e documentacao consolidada para op
 - executa localmente com configuracao de exemplo
 - escreve nodes e relacionamentos no Neo4j
 - respeita `create` e `merge`
-- atualiza `updated_at` corretamente
+- atualiza `z4j_updated_at` corretamente
 
 ### Fase 2
 

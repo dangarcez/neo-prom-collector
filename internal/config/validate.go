@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"neo_collector_go/internal/domain"
 )
 
 func ValidateFileConfig(cfg FileConfig) error {
@@ -173,8 +175,8 @@ func validateSelector(path string, endpoint RelationshipEndpointConfig) error {
 
 func validateStaticProperties(path string, properties map[string]any) error {
 	for key := range properties {
-		if strings.TrimSpace(key) == "" {
-			return fmt.Errorf("%s contains an empty property name", path)
+		if err := validateUserPropertyName(path, key); err != nil {
+			return err
 		}
 	}
 
@@ -183,8 +185,8 @@ func validateStaticProperties(path string, properties map[string]any) error {
 
 func validateDynamicProperties(path string, properties map[string]string) error {
 	for key, value := range properties {
-		if strings.TrimSpace(key) == "" {
-			return fmt.Errorf("%s contains an empty property name", path)
+		if err := validateUserPropertyName(path, key); err != nil {
+			return err
 		}
 
 		if strings.TrimSpace(value) == "" {
@@ -201,6 +203,9 @@ func validateConditionalProperties(path string, properties []ConditionalProperty
 
 		if strings.TrimSpace(property.Name) == "" {
 			return fmt.Errorf("%s.name is required", itemPath)
+		}
+		if err := validateUserPropertyName(itemPath+".name", property.Name); err != nil {
+			return err
 		}
 
 		switch strings.ToLower(strings.TrimSpace(property.Type)) {
@@ -234,6 +239,9 @@ func validatePropertyTransforms(path string, transforms []PropertyTransformConfi
 
 		if strings.TrimSpace(transform.Property) == "" {
 			return fmt.Errorf("%s.property is required", transformPath)
+		}
+		if err := validateUserPropertyName(transformPath+".property", transform.Property); err != nil {
+			return err
 		}
 
 		if len(transform.Process) == 0 {
@@ -408,5 +416,16 @@ func validateExpirationTimeMin(path string, value *int) error {
 		return fmt.Errorf("%s must be greater than zero when provided", path)
 	}
 
+	return nil
+}
+
+func validateUserPropertyName(path string, name string) error {
+	propertyName := strings.TrimSpace(name)
+	if propertyName == "" {
+		return fmt.Errorf("%s contains an empty property name", path)
+	}
+	if strings.HasPrefix(propertyName, domain.AppFieldPrefix) {
+		return fmt.Errorf("%s property %q uses reserved prefix %q", path, name, domain.AppFieldPrefix)
+	}
 	return nil
 }

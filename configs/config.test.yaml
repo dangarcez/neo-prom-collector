@@ -13,17 +13,18 @@ prom_targets:
         interval_seconds: 30
         nodes:
           - types: 
-              - PrometheusJob
+              - PROMETHEUSJOB
             template_hashes:
-              - prometheus-job-v1
+              - b23b5cb54b411990
             update_policy: merge
+            expiration_time_min: 10
             label_properties:
               name: job
               job: job
 
-          - type: PrometheusTarget
+          - type: PROMETHEUSTARGET
             template_hashes:
-              - prometheus-target-v1
+              - 0141ecd65eec3ec9
             static_properties:
               kind: scrape_target
             label_properties:
@@ -31,18 +32,25 @@ prom_targets:
               job: job
               instance: instance
               status: __value__
+            property_transforms:
+              - property: kind
+                process:
+                  - type: REGEX
+                    pattern: "/(\\w+)_(\\w+)/"
+                    output: "$1_is_kind"
+                  - type: TO_UPPER
 
         relationships:
           - type: SCRAPES
-            template_hash: job-scrapes-target-v1
+            template_hash: 8c2c0b2cdbab83d6
             update_policy: merge
             source:
-              type: PrometheusJob
+              type: PROMETHEUSJOB
               match_attributes:
                 labels:
                   name: job
             target:
-              type: PrometheusTarget
+              type: PROMETHEUSTARGET
               match_attributes:
                 labels:
                   name: instance

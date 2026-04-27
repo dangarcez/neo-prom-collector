@@ -86,8 +86,8 @@ func (r *Repository) createNode(ctx context.Context, tx driver.ManagedTransactio
 
 	properties := cloneMap(node.Properties)
 	nowText := now.Format(time.RFC3339)
-	properties["created_at"] = nowText
-	properties["updated_at"] = nowText
+	properties[domain.FieldCreatedAt] = nowText
+	properties[domain.FieldUpdatedAt] = nowText
 	applyExpiration(properties, node.UpdatePolicy, node.ExpirationTimeMin, now)
 
 	query := fmt.Sprintf(
@@ -154,7 +154,7 @@ func (r *Repository) updateNode(ctx context.Context, tx driver.ManagedTransactio
 	}
 
 	properties := cloneMap(node.Properties)
-	properties["updated_at"] = now.Format(time.RFC3339)
+	properties[domain.FieldUpdatedAt] = now.Format(time.RFC3339)
 	applyExpiration(properties, node.UpdatePolicy, node.ExpirationTimeMin, now)
 
 	query := fmt.Sprintf(

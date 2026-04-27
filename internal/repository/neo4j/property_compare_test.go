@@ -9,14 +9,14 @@ import (
 func TestManagedNodePropertiesExcludeAutomaticFields(t *testing.T) {
 	node := domain.GraphNode{
 		Properties: map[string]any{
-			"name":            "api-0",
-			"kind":            "workload",
-			"node_uid":        "node-1",
-			"template_hashes": []string{"pod-v1"},
-			"origin":          "auto",
-			"created_at":      "2026-04-12T10:00:00Z",
-			"updated_at":      "2026-04-12T10:00:00Z",
-			"expires_at":      "2026-04-12T11:00:00Z",
+			"name":                         "api-0",
+			"kind":                         "workload",
+			domain.FieldNodeUID:            "node-1",
+			domain.FieldNodeTemplateHashes: []string{"pod-v1"},
+			domain.FieldOrigin:             "auto",
+			domain.FieldCreatedAt:          "2026-04-12T10:00:00Z",
+			domain.FieldUpdatedAt:          "2026-04-12T10:00:00Z",
+			domain.FieldExpiresAt:          "2026-04-12T11:00:00Z",
 		},
 	}
 
@@ -36,15 +36,14 @@ func TestManagedNodePropertiesExcludeAutomaticFields(t *testing.T) {
 func TestManagedRelationshipPropertiesExcludeAutomaticFields(t *testing.T) {
 	relationship := domain.GraphRelationship{
 		Properties: map[string]any{
-			"source_system":   "prometheus",
-			"status":          "up",
-			"rel_uid":         "rel-1",
-			"template_hash":   "scrapes-v1",
-			"template_hashes": []string{"legacy-scrapes-v1"},
-			"origin":          "auto",
-			"created_at":      "2026-04-12T10:00:00Z",
-			"updated_at":      "2026-04-12T10:00:00Z",
-			"expires_at":      "2026-04-12T11:00:00Z",
+			"source_system":                      "prometheus",
+			"status":                             "up",
+			domain.FieldRelUID:                   "rel-1",
+			domain.FieldRelationshipTemplateHash: "scrapes-v1",
+			domain.FieldOrigin:                   "auto",
+			domain.FieldCreatedAt:                "2026-04-12T10:00:00Z",
+			domain.FieldUpdatedAt:                "2026-04-12T10:00:00Z",
+			domain.FieldExpiresAt:                "2026-04-12T11:00:00Z",
 		},
 	}
 
@@ -67,7 +66,7 @@ func TestShouldUpdatePropertiesReturnsFalseWhenDesiredBusinessFieldsAreEqual(t *
 		"kind":       "workload",
 		"replicas":   int64(3),
 		"labels":     []any{"blue", "stable"},
-		"updated_at": "2026-04-12T10:00:00Z",
+		"updated_at": "user-managed",
 		"extra":      "kept",
 	}
 	desired := map[string]any{
@@ -79,6 +78,27 @@ func TestShouldUpdatePropertiesReturnsFalseWhenDesiredBusinessFieldsAreEqual(t *
 
 	if shouldUpdateProperties(current, desired) {
 		t.Fatalf("expected comparison to skip update when desired properties are unchanged")
+	}
+}
+
+func TestManagedPropertiesKeepUnprefixedNamesAsBusinessFields(t *testing.T) {
+	node := domain.GraphNode{
+		Properties: map[string]any{
+			"origin":     "user-value",
+			"updated_at": "user-managed",
+		},
+	}
+
+	properties := managedNodeProperties(node)
+
+	if len(properties) != 2 {
+		t.Fatalf("expected unprefixed fields to remain as business properties, got %#v", properties)
+	}
+	if properties["origin"] != "user-value" {
+		t.Fatalf("expected unprefixed origin to remain, got %#v", properties["origin"])
+	}
+	if properties["updated_at"] != "user-managed" {
+		t.Fatalf("expected unprefixed updated_at to remain, got %#v", properties["updated_at"])
 	}
 }
 

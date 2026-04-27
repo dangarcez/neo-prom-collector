@@ -56,9 +56,9 @@ func (p *Planner) Plan(job config.JobConfig, datapoint domain.Datapoint) (domain
 
 		uid := NodeUID(types, name, nodeTemplate.TemplateHashes)
 		properties["name"] = name
-		properties["node_uid"] = uid
-		properties["template_hashes"] = append([]string(nil), nodeTemplate.TemplateHashes...)
-		properties["origin"] = "auto"
+		properties[domain.FieldNodeUID] = uid
+		properties[domain.FieldNodeTemplateHashes] = append([]string(nil), nodeTemplate.TemplateHashes...)
+		properties[domain.FieldOrigin] = "auto"
 
 		plan.Nodes = append(plan.Nodes, domain.GraphNode{
 			Types:             types,
@@ -104,9 +104,9 @@ func (p *Planner) Plan(job config.JobConfig, datapoint domain.Datapoint) (domain
 		templateHash := relationshipTemplate.NormalizedTemplateHash()
 		uid := RelationshipUID(relationshipTemplate.Type, templateHash, source, target)
 
-		properties["rel_uid"] = uid
-		properties["template_hash"] = templateHash
-		properties["origin"] = "auto"
+		properties[domain.FieldRelUID] = uid
+		properties[domain.FieldRelationshipTemplateHash] = templateHash
+		properties[domain.FieldOrigin] = "auto"
 
 		plan.Relationships = append(plan.Relationships, domain.GraphRelationship{
 			Type:              relationshipTemplate.Type,

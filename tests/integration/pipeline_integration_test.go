@@ -224,11 +224,11 @@ func TestRepositoryApplyPlanCreatesRelationshipCrossProductForMultipleMatches(t 
 				TemplateHashes: []string{"source-v1"},
 				UpdatePolicy:   domain.UpdatePolicyCreate,
 				Properties: map[string]any{
-					"name":            "source-a",
-					"group":           "demo",
-					"node_uid":        "source-a-uid",
-					"template_hashes": []string{"source-v1"},
-					"origin":          "auto",
+					"name":                         "source-a",
+					"group":                        "demo",
+					domain.FieldNodeUID:            "source-a-uid",
+					domain.FieldNodeTemplateHashes: []string{"source-v1"},
+					domain.FieldOrigin:             "auto",
 				},
 				UID: "source-a-uid",
 			},
@@ -238,11 +238,11 @@ func TestRepositoryApplyPlanCreatesRelationshipCrossProductForMultipleMatches(t 
 				TemplateHashes: []string{"source-v1"},
 				UpdatePolicy:   domain.UpdatePolicyCreate,
 				Properties: map[string]any{
-					"name":            "source-b",
-					"group":           "demo",
-					"node_uid":        "source-b-uid",
-					"template_hashes": []string{"source-v1"},
-					"origin":          "auto",
+					"name":                         "source-b",
+					"group":                        "demo",
+					domain.FieldNodeUID:            "source-b-uid",
+					domain.FieldNodeTemplateHashes: []string{"source-v1"},
+					domain.FieldOrigin:             "auto",
 				},
 				UID: "source-b-uid",
 			},
@@ -252,11 +252,11 @@ func TestRepositoryApplyPlanCreatesRelationshipCrossProductForMultipleMatches(t 
 				TemplateHashes: []string{"target-v1"},
 				UpdatePolicy:   domain.UpdatePolicyCreate,
 				Properties: map[string]any{
-					"name":            "target-1",
-					"group":           "demo",
-					"node_uid":        "target-1-uid",
-					"template_hashes": []string{"target-v1"},
-					"origin":          "auto",
+					"name":                         "target-1",
+					"group":                        "demo",
+					domain.FieldNodeUID:            "target-1-uid",
+					domain.FieldNodeTemplateHashes: []string{"target-v1"},
+					domain.FieldOrigin:             "auto",
 				},
 				UID: "target-1-uid",
 			},
@@ -266,11 +266,11 @@ func TestRepositoryApplyPlanCreatesRelationshipCrossProductForMultipleMatches(t 
 				TemplateHashes: []string{"target-v1"},
 				UpdatePolicy:   domain.UpdatePolicyCreate,
 				Properties: map[string]any{
-					"name":            "target-2",
-					"group":           "demo",
-					"node_uid":        "target-2-uid",
-					"template_hashes": []string{"target-v1"},
-					"origin":          "auto",
+					"name":                         "target-2",
+					"group":                        "demo",
+					domain.FieldNodeUID:            "target-2-uid",
+					domain.FieldNodeTemplateHashes: []string{"target-v1"},
+					domain.FieldOrigin:             "auto",
 				},
 				UID: "target-2-uid",
 			},
@@ -280,11 +280,11 @@ func TestRepositoryApplyPlanCreatesRelationshipCrossProductForMultipleMatches(t 
 				TemplateHashes: []string{"target-v1"},
 				UpdatePolicy:   domain.UpdatePolicyCreate,
 				Properties: map[string]any{
-					"name":            "target-3",
-					"group":           "demo",
-					"node_uid":        "target-3-uid",
-					"template_hashes": []string{"target-v1"},
-					"origin":          "auto",
+					"name":                         "target-3",
+					"group":                        "demo",
+					domain.FieldNodeUID:            "target-3-uid",
+					domain.FieldNodeTemplateHashes: []string{"target-v1"},
+					domain.FieldOrigin:             "auto",
 				},
 				UID: "target-3-uid",
 			},
@@ -314,8 +314,8 @@ func TestRepositoryApplyPlanCreatesRelationshipCrossProductForMultipleMatches(t 
 					},
 				},
 				Properties: map[string]any{
-					"template_hash": "connects-to-v1",
-					"origin":        "auto",
+					domain.FieldRelationshipTemplateHash: "connects-to-v1",
+					domain.FieldOrigin:                   "auto",
 				},
 				UID: "connects-to-template-uid",
 			},
@@ -356,7 +356,7 @@ func TestRepositoryApplyPlanCreatesRelationshipCrossProductForMultipleMatches(t 
 	}()
 
 	relationshipCount := readCount(ctx, t, session, `
-MATCH (:Entity:SourceDemo {group: "demo"})-[r:CONNECTS_TO {template_hash: $template_hash, origin: "auto"}]->(:Entity:TargetDemo {group: "demo"})
+MATCH (:Entity:SourceDemo {group: "demo"})-[r:CONNECTS_TO {z4j_template_hash: $template_hash, z4j_origin: "auto"}]->(:Entity:TargetDemo {group: "demo"})
 RETURN count(r) AS count
 `, map[string]any{
 		"template_hash": "connects-to-v1",
@@ -366,8 +366,8 @@ RETURN count(r) AS count
 	}
 
 	distinctUIDCount := readCount(ctx, t, session, `
-MATCH (:Entity:SourceDemo {group: "demo"})-[r:CONNECTS_TO {template_hash: $template_hash, origin: "auto"}]->(:Entity:TargetDemo {group: "demo"})
-RETURN count(DISTINCT r.rel_uid) AS count
+MATCH (:Entity:SourceDemo {group: "demo"})-[r:CONNECTS_TO {z4j_template_hash: $template_hash, z4j_origin: "auto"}]->(:Entity:TargetDemo {group: "demo"})
+RETURN count(DISTINCT r.z4j_rel_uid) AS count
 `, map[string]any{
 		"template_hash": "connects-to-v1",
 	})
@@ -408,10 +408,10 @@ func TestRepositoryApplyPlanDoesNotDuplicateNodeUnderConcurrentWrites(t *testing
 				TemplateHashes: []string{"host-v1"},
 				UpdatePolicy:   domain.UpdatePolicyMergeAtChange,
 				Properties: map[string]any{
-					"name":            "cadecrk01cl01vm03",
-					"node_uid":        "27933f3e-2bc1-5383-b673-31e5a8d87433",
-					"template_hashes": []string{"host-v1"},
-					"origin":          "auto",
+					"name":                         "cadecrk01cl01vm03",
+					domain.FieldNodeUID:            "27933f3e-2bc1-5383-b673-31e5a8d87433",
+					domain.FieldNodeTemplateHashes: []string{"host-v1"},
+					domain.FieldOrigin:             "auto",
 				},
 				UID: "27933f3e-2bc1-5383-b673-31e5a8d87433",
 			},
@@ -455,7 +455,7 @@ func TestRepositoryApplyPlanDoesNotDuplicateNodeUnderConcurrentWrites(t *testing
 	}()
 
 	count := readCount(ctx, t, session, `
-MATCH (n:Entity:ConcurrentHost {name: $name, node_uid: $node_uid})
+MATCH (n:Entity:ConcurrentHost {name: $name, z4j_node_uid: $node_uid})
 RETURN count(n) AS count
 `, map[string]any{
 		"name":     "cadecrk01cl01vm03",
@@ -592,7 +592,7 @@ func verifyGraphState(ctx context.Context, t *testing.T, neo4jURI string) {
 	}()
 
 	prometheusCount := readCount(ctx, t, session, `
-MATCH (n:Entity:Prometheus {name: $name, origin: "auto"})
+MATCH (n:Entity:Prometheus {name: $name, z4j_origin: "auto"})
 RETURN count(n) AS count
 `, map[string]any{"name": "main_prometheus"})
 	if prometheusCount != 1 {
@@ -600,7 +600,7 @@ RETURN count(n) AS count
 	}
 
 	buildCount := readCount(ctx, t, session, `
-MATCH (n:Entity:BuildVersion {origin: "auto"})
+MATCH (n:Entity:BuildVersion {z4j_origin: "auto"})
 RETURN count(n) AS count
 `, nil)
 	if buildCount != 1 {
@@ -608,7 +608,7 @@ RETURN count(n) AS count
 	}
 
 	relationshipCount := readCount(ctx, t, session, `
-MATCH (:Entity:Prometheus {name: $name})-[r:EXPOSES_BUILD {template_hash: $template_hash, origin: "auto"}]->(:Entity:BuildVersion)
+MATCH (:Entity:Prometheus {name: $name})-[r:EXPOSES_BUILD {z4j_template_hash: $template_hash, z4j_origin: "auto"}]->(:Entity:BuildVersion)
 RETURN count(r) AS count
 `, map[string]any{
 		"name":          "main_prometheus",
@@ -619,16 +619,16 @@ RETURN count(r) AS count
 	}
 
 	if emptyFieldCount := readCount(ctx, t, session, `
-MATCH (n:Entity:Prometheus {name: $name, origin: "auto"})
-WHERE n.node_uid IS NULL OR n.updated_at IS NULL OR n.created_at IS NULL
+MATCH (n:Entity:Prometheus {name: $name, z4j_origin: "auto"})
+WHERE n.z4j_node_uid IS NULL OR n.z4j_updated_at IS NULL OR n.z4j_created_at IS NULL
 RETURN count(n) AS count
 `, map[string]any{"name": "main_prometheus"}); emptyFieldCount != 0 {
 		t.Fatalf("expected automatic node fields to be populated, got %d invalid nodes", emptyFieldCount)
 	}
 
 	if emptyFieldCount := readCount(ctx, t, session, `
-MATCH (:Entity:Prometheus {name: $name})-[r:EXPOSES_BUILD {template_hash: $template_hash, origin: "auto"}]->(:Entity:BuildVersion)
-WHERE r.rel_uid IS NULL OR r.updated_at IS NULL OR r.created_at IS NULL
+MATCH (:Entity:Prometheus {name: $name})-[r:EXPOSES_BUILD {z4j_template_hash: $template_hash, z4j_origin: "auto"}]->(:Entity:BuildVersion)
+WHERE r.z4j_rel_uid IS NULL OR r.z4j_updated_at IS NULL OR r.z4j_created_at IS NULL
 RETURN count(r) AS count
 `, map[string]any{
 		"name":          "main_prometheus",

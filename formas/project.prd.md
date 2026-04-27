@@ -60,7 +60,7 @@ O foco não é:
 - excluir entidades expiradas
 - substituir o app principal
 
-Em particular, quando o contrato gerar `expires_at`, qualquer rotina de remoção ou tratamento posterior continuará fora do escopo do ingestor.
+Em particular, quando o contrato gerar `z4j_expires_at`, qualquer rotina de remoção ou tratamento posterior continuará fora do escopo do ingestor.
 
 ## 4. Escopo Funcional
 
@@ -165,10 +165,10 @@ Nodes e relacionamentos podem declarar `expiration_time_min`.
 
 Quando configurado:
 
-- o repositório deve gerar `expires_at`
-- `expires_at` deve ser calculado como `agora_utc + expiration_time_min`
-- `expires_at` só deve ser criado ou renovado em `create` e `merge`
-- `merge_at_change` não deve renovar `expires_at`
+- o repositório deve gerar `z4j_expires_at`
+- `z4j_expires_at` deve ser calculado como `agora_utc + expiration_time_min`
+- `z4j_expires_at` só deve ser criado ou renovado em `create` e `merge`
+- `merge_at_change` não deve renovar `z4j_expires_at`
 
 ### 4.8 Modos operacionais e runtime
 
@@ -233,13 +233,13 @@ O comportamento esperado deve seguir o contrato atual:
 Para nodes:
 
 - identidade de existência baseada em tipo e `name`
-- `node_uid` estável gerado automaticamente
+- `z4j_node_uid` estável gerado automaticamente
 
 Para relacionamentos:
 
 - `template_hash` é a entrada canônica de configuração
-- a persistência usa `template_hash` como string
-- `rel_uid` estável deve ser gerado automaticamente
+- a persistência usa `z4j_template_hash` como string
+- `z4j_rel_uid` estável deve ser gerado automaticamente
 - quando houver múltiplos matches em `source` e `target`, o sistema deve criar o produto cartesiano entre os pares
 
 ### 6.5 Campos automáticos
@@ -247,31 +247,33 @@ Para relacionamentos:
 O pipeline de persistência deve gerar ou manter:
 
 - label base `Entity` para nodes
-- `origin = "auto"`
-- `node_uid`
-- `template_hashes` para nodes
-- `rel_uid`
-- `template_hash` para relacionamentos
-- `created_at`
-- `updated_at`
-- `expires_at` quando aplicável
+- `z4j_origin = "auto"`
+- `z4j_node_uid`
+- `z4j_template_hashes` para nodes
+- `z4j_rel_uid`
+- `z4j_template_hash` para relacionamentos
+- `z4j_created_at`
+- `z4j_updated_at`
+- `z4j_expires_at` quando aplicável
+
+O prefixo `z4j_` deve ser reservado para campos gerados pelo ingestor e não deve ser aceito em propriedades criadas pelo usuário.
 
 ### 6.6 Semântica de `merge_at_change`
 
 `merge_at_change` deve comparar apenas propriedades de negócio declaradas na configuração e ignorar campos automáticos, incluindo:
 
 - ids automáticos
-- `origin`
-- `created_at`
-- `updated_at`
-- `expires_at`
+- `z4j_origin`
+- `z4j_created_at`
+- `z4j_updated_at`
+- `z4j_expires_at`
 - hashes automáticos persistidos
 
 Quando nada mudar:
 
 - a mutação deve ser tratada como `skipped`
-- `updated_at` não deve ser renovado
-- `expires_at` não deve ser renovado
+- `z4j_updated_at` não deve ser renovado
+- `z4j_expires_at` não deve ser renovado
 
 ## 7. Requisitos Não Funcionais
 

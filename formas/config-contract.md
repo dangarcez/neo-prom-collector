@@ -156,7 +156,7 @@ Campos:
 | `types` | lista de string | condicional | - | Lista de labels técnicas do node. |
 | `template_hashes` | lista de string | sim | - | Hashes da definição do node. |
 | `update_policy` | string | não | `create` | `create`, `merge` ou `merge_at_change`. |
-| `expiration_time_min` | inteiro | não | ausente | Gera `expires_at` em `create` e `merge`. |
+| `expiration_time_min` | inteiro | não | ausente | Gera `z4j_expires_at` em `create` e `merge`. |
 | `static_properties` | mapa | não | `{}` | Propriedades literais. |
 | `label_properties` | mapa string->string | não | `{}` | Propriedades resolvidas a partir de labels ou tokens. |
 | `conditional_properties` | lista | não | `[]` | Propriedades aplicadas quando condições passam. |
@@ -180,7 +180,7 @@ Campos:
 | `type` | string | sim | - | Tipo técnico do relacionamento. |
 | `template_hash` | string | sim | - | Hash canônico da definição do relacionamento. |
 | `update_policy` | string | não | `create` | `create`, `merge` ou `merge_at_change`. |
-| `expiration_time_min` | inteiro | não | ausente | Gera `expires_at` em `create` e `merge`. |
+| `expiration_time_min` | inteiro | não | ausente | Gera `z4j_expires_at` em `create` e `merge`. |
 | `static_properties` | mapa | não | `{}` | Propriedades literais. |
 | `label_properties` | mapa string->string | não | `{}` | Propriedades resolvidas do item. |
 | `conditional_properties` | lista | não | `[]` | Propriedades aplicadas quando condições passam. |
@@ -287,10 +287,10 @@ Campo opcional para node ou relacionamento.
 
 Semântica:
 
-- gera `expires_at = agora_utc + expiration_time_min`
-- `expires_at` é gerado apenas na persistência
-- `expires_at` só entra em `create` e `merge`
-- `merge_at_change` não deve renovar `expires_at`
+- gera `z4j_expires_at = agora_utc + expiration_time_min`
+- `z4j_expires_at` é gerado apenas na persistência
+- `z4j_expires_at` só entra em `create` e `merge`
+- `merge_at_change` não deve renovar `z4j_expires_at`
 
 ## Condições
 
@@ -336,46 +336,46 @@ Se uma source não produzir `value` ou `timestamp`, jobs que dependam desses tok
 ### `create`
 
 - cria apenas se a entidade equivalente não existir
-- se `expiration_time_min` existir, cria `expires_at` na inserção
+- se `expiration_time_min` existir, cria `z4j_expires_at` na inserção
 
 ### `merge`
 
 - cria quando não existe
 - atualiza quando existe
-- se `expiration_time_min` existir, cria ou renova `expires_at`
+- se `expiration_time_min` existir, cria ou renova `z4j_expires_at`
 
 ### `merge_at_change`
 
 - cria quando não existe
 - só atualiza quando propriedades de negócio mudam
 - ignora campos automáticos na comparação
-- não renova `expires_at`
+- não renova `z4j_expires_at`
 
 ## Campos Automáticos Gerados pela Persistência
 
 ### Nodes
 
 - label base `Entity`
-- `node_uid`
-- `template_hashes`
-- `origin = "auto"`
-- `created_at`
-- `updated_at`
-- `expires_at` quando aplicável
+- `z4j_node_uid`
+- `z4j_template_hashes`
+- `z4j_origin = "auto"`
+- `z4j_created_at`
+- `z4j_updated_at`
+- `z4j_expires_at` quando aplicável
 
 ### Relacionamentos
 
-- `rel_uid`
-- `template_hash`
-- `origin = "auto"`
-- `created_at`
-- `updated_at`
-- `expires_at` quando aplicável
+- `z4j_rel_uid`
+- `z4j_template_hash`
+- `z4j_origin = "auto"`
+- `z4j_created_at`
+- `z4j_updated_at`
+- `z4j_expires_at` quando aplicável
 
 Observação:
 
 - para relacionamentos, a entrada canônica é `template_hash`
-- a persistência usa `template_hash` como string
+- a persistência usa `z4j_template_hash` como string
 
 ## Regras de Validação Importantes
 
@@ -397,6 +397,7 @@ O contrato deve falhar antes da execução contínua em casos como:
 - `update_policy` fora de `create`, `merge`, `merge_at_change`
 - `property_transforms` inválido
 - `property_transforms[].process[]` do tipo `REGEX` sem `pattern`, sem `output`, sem referencia a grupo, sem grupo de captura ou com referencia a grupo inexistente
+- propriedades de usuário com prefixo reservado `z4j_`
 - `expiration_time_min <= 0` quando informado
 
 ## Observações de Compatibilidade com o Coletor Atual

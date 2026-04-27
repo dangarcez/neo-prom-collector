@@ -13,14 +13,14 @@ func TestApplyExpirationSetsExpiresAtForCreateAndMerge(t *testing.T) {
 
 	createProperties := map[string]any{}
 	applyExpiration(createProperties, domain.UpdatePolicyCreate, &minutes, now)
-	if createProperties["expires_at"] != "2026-04-21T13:15:00Z" {
-		t.Fatalf("expected create expires_at to be set, got %#v", createProperties["expires_at"])
+	if createProperties[domain.FieldExpiresAt] != "2026-04-21T13:15:00Z" {
+		t.Fatalf("expected create z4j_expires_at to be set, got %#v", createProperties[domain.FieldExpiresAt])
 	}
 
 	mergeProperties := map[string]any{}
 	applyExpiration(mergeProperties, domain.UpdatePolicyMerge, &minutes, now)
-	if mergeProperties["expires_at"] != "2026-04-21T13:15:00Z" {
-		t.Fatalf("expected merge expires_at to be set, got %#v", mergeProperties["expires_at"])
+	if mergeProperties[domain.FieldExpiresAt] != "2026-04-21T13:15:00Z" {
+		t.Fatalf("expected merge z4j_expires_at to be set, got %#v", mergeProperties[domain.FieldExpiresAt])
 	}
 }
 
@@ -30,13 +30,13 @@ func TestApplyExpirationSkipsMergeAtChangeAndMissingConfiguration(t *testing.T) 
 
 	mergeAtChangeProperties := map[string]any{}
 	applyExpiration(mergeAtChangeProperties, domain.UpdatePolicyMergeAtChange, &minutes, now)
-	if _, exists := mergeAtChangeProperties["expires_at"]; exists {
-		t.Fatalf("expected merge_at_change to skip expires_at, got %#v", mergeAtChangeProperties["expires_at"])
+	if _, exists := mergeAtChangeProperties[domain.FieldExpiresAt]; exists {
+		t.Fatalf("expected merge_at_change to skip z4j_expires_at, got %#v", mergeAtChangeProperties[domain.FieldExpiresAt])
 	}
 
 	missingConfigProperties := map[string]any{}
 	applyExpiration(missingConfigProperties, domain.UpdatePolicyCreate, nil, now)
-	if _, exists := missingConfigProperties["expires_at"]; exists {
-		t.Fatalf("expected missing expiration configuration to skip expires_at, got %#v", missingConfigProperties["expires_at"])
+	if _, exists := missingConfigProperties[domain.FieldExpiresAt]; exists {
+		t.Fatalf("expected missing expiration configuration to skip z4j_expires_at, got %#v", missingConfigProperties[domain.FieldExpiresAt])
 	}
 }

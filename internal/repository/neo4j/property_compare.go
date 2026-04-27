@@ -7,22 +7,21 @@ import (
 )
 
 var automaticNodeProperties = map[string]struct{}{
-	"node_uid":        {},
-	"template_hashes": {},
-	"origin":          {},
-	"created_at":      {},
-	"updated_at":      {},
-	"expires_at":      {},
+	domain.FieldNodeUID:            {},
+	domain.FieldNodeTemplateHashes: {},
+	domain.FieldOrigin:             {},
+	domain.FieldCreatedAt:          {},
+	domain.FieldUpdatedAt:          {},
+	domain.FieldExpiresAt:          {},
 }
 
 var automaticRelationshipProperties = map[string]struct{}{
-	"rel_uid":         {},
-	"template_hash":   {},
-	"template_hashes": {},
-	"origin":          {},
-	"created_at":      {},
-	"updated_at":      {},
-	"expires_at":      {},
+	domain.FieldRelUID:                   {},
+	domain.FieldRelationshipTemplateHash: {},
+	domain.FieldOrigin:                   {},
+	domain.FieldCreatedAt:                {},
+	domain.FieldUpdatedAt:                {},
+	domain.FieldExpiresAt:                {},
 }
 
 func managedNodeProperties(node domain.GraphNode) map[string]any {

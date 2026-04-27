@@ -79,11 +79,11 @@ func TestPlannerPlanBuildsNodesAndRelationships(t *testing.T) {
 	foundNamespace := false
 	foundPod := false
 	for _, node := range plan.Nodes {
-		if node.Properties["origin"] != "auto" {
-			t.Fatalf("expected node origin to be auto, got: %#v", node.Properties["origin"])
+		if node.Properties[domain.FieldOrigin] != "auto" {
+			t.Fatalf("expected node origin to be auto, got: %#v", node.Properties[domain.FieldOrigin])
 		}
-		if node.Properties["node_uid"] == "" {
-			t.Fatal("expected node_uid to be set")
+		if node.Properties[domain.FieldNodeUID] == "" {
+			t.Fatal("expected z4j_node_uid to be set")
 		}
 		if node.Name == "production" {
 			foundNamespace = true
@@ -98,14 +98,17 @@ func TestPlannerPlanBuildsNodesAndRelationships(t *testing.T) {
 	}
 
 	relationship := plan.Relationships[0]
-	if relationship.Properties["origin"] != "auto" {
-		t.Fatalf("expected relationship origin to be auto, got: %#v", relationship.Properties["origin"])
+	if relationship.Properties[domain.FieldOrigin] != "auto" {
+		t.Fatalf("expected relationship origin to be auto, got: %#v", relationship.Properties[domain.FieldOrigin])
 	}
-	if relationship.Properties["rel_uid"] == "" {
-		t.Fatal("expected rel_uid to be set")
+	if relationship.Properties[domain.FieldRelUID] == "" {
+		t.Fatal("expected z4j_rel_uid to be set")
 	}
-	if relationship.Properties["template_hash"] != "owns-v1" {
-		t.Fatalf("expected template_hash to be owns-v1, got: %#v", relationship.Properties["template_hash"])
+	if relationship.Properties[domain.FieldRelationshipTemplateHash] != "owns-v1" {
+		t.Fatalf("expected z4j_template_hash to be owns-v1, got: %#v", relationship.Properties[domain.FieldRelationshipTemplateHash])
+	}
+	if _, ok := relationship.Properties["template_hash"]; ok {
+		t.Fatalf("expected relationship not to contain template_hash, got: %#v", relationship.Properties["template_hash"])
 	}
 	if _, ok := relationship.Properties["template_hashes"]; ok {
 		t.Fatalf("expected relationship not to contain template_hashes, got: %#v", relationship.Properties["template_hashes"])
@@ -277,8 +280,8 @@ func TestPlannerPlanAppliesPropertyTransforms(t *testing.T) {
 	if node.UID != expectedNodeUID {
 		t.Fatalf("expected node UID %q, got %q", expectedNodeUID, node.UID)
 	}
-	if node.Properties["node_uid"] != expectedNodeUID {
-		t.Fatalf("expected node property node_uid %q, got %#v", expectedNodeUID, node.Properties["node_uid"])
+	if node.Properties[domain.FieldNodeUID] != expectedNodeUID {
+		t.Fatalf("expected node property z4j_node_uid %q, got %#v", expectedNodeUID, node.Properties[domain.FieldNodeUID])
 	}
 
 	relationship := plan.Relationships[0]
@@ -305,8 +308,8 @@ func TestPlannerPlanAppliesPropertyTransforms(t *testing.T) {
 	if relationship.UID != expectedRelUID {
 		t.Fatalf("expected relationship UID %q, got %q", expectedRelUID, relationship.UID)
 	}
-	if relationship.Properties["rel_uid"] != expectedRelUID {
-		t.Fatalf("expected relationship property rel_uid %q, got %#v", expectedRelUID, relationship.Properties["rel_uid"])
+	if relationship.Properties[domain.FieldRelUID] != expectedRelUID {
+		t.Fatalf("expected relationship property z4j_rel_uid %q, got %#v", expectedRelUID, relationship.Properties[domain.FieldRelUID])
 	}
 }
 
@@ -372,16 +375,16 @@ func TestPlannerPlanCarriesExpirationMetadataWithoutInjectingExpiresAt(t *testin
 	if node.ExpirationTimeMin == nil || *node.ExpirationTimeMin != 30 {
 		t.Fatalf("expected node expiration metadata to be 30, got %#v", node.ExpirationTimeMin)
 	}
-	if _, exists := node.Properties["expires_at"]; exists {
-		t.Fatalf("expected planner to leave expires_at unset for nodes, got %#v", node.Properties["expires_at"])
+	if _, exists := node.Properties[domain.FieldExpiresAt]; exists {
+		t.Fatalf("expected planner to leave z4j_expires_at unset for nodes, got %#v", node.Properties[domain.FieldExpiresAt])
 	}
 
 	relationship := plan.Relationships[0]
 	if relationship.ExpirationTimeMin == nil || *relationship.ExpirationTimeMin != 15 {
 		t.Fatalf("expected relationship expiration metadata to be 15, got %#v", relationship.ExpirationTimeMin)
 	}
-	if _, exists := relationship.Properties["expires_at"]; exists {
-		t.Fatalf("expected planner to leave expires_at unset for relationships, got %#v", relationship.Properties["expires_at"])
+	if _, exists := relationship.Properties[domain.FieldExpiresAt]; exists {
+		t.Fatalf("expected planner to leave z4j_expires_at unset for relationships, got %#v", relationship.Properties[domain.FieldExpiresAt])
 	}
 }
 

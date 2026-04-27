@@ -170,7 +170,7 @@ Implementar gerador de identidades estaveis
 
 ## 2. Descricao
 
-Gerar `node_uid` e `rel_uid` deterministicos com UUIDv5 a partir das chaves canonicas de negocio.
+Gerar `z4j_node_uid` e `z4j_rel_uid` deterministicos com UUIDv5 a partir das chaves canonicas de negocio.
 
 ## 3. Arquivos envolvidos
 
@@ -253,7 +253,7 @@ Implementar persistencia de nodes
 
 ## 2. Descricao
 
-Criar a logica de `create` e `merge` para nodes, respeitando `Entity`, `name`, `template_hashes`, `origin`, `created_at` e `updated_at`.
+Criar a logica de `create` e `merge` para nodes, respeitando `Entity`, `name`, `z4j_template_hashes`, `z4j_origin`, `z4j_created_at` e `z4j_updated_at`.
 
 ## 3. Arquivos envolvidos
 

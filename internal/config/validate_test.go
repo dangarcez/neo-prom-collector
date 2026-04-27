@@ -3,6 +3,8 @@ package config
 import (
 	"strings"
 	"testing"
+
+	"neo_collector_go/internal/domain"
 )
 
 func TestValidateFileConfigAcceptsMinimalConfig(t *testing.T) {
@@ -308,6 +310,75 @@ func TestValidateFileConfigRejectsUnknownPropertyProcessorType(t *testing.T) {
 
 	if !strings.Contains(err.Error(), ".process[0].type") {
 		t.Fatalf("expected processor type path in error, got: %v", err)
+	}
+}
+
+func TestValidateFileConfigRejectsReservedPropertyPrefix(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*FileConfig)
+	}{
+		{
+			name: "static property",
+			mutate: func(cfg *FileConfig) {
+				cfg.PromTargets[0].Jobs[0].Nodes[0].StaticProperties = map[string]any{
+					domain.AppFieldPrefix + "custom": "value",
+				}
+			},
+		},
+		{
+			name: "label property",
+			mutate: func(cfg *FileConfig) {
+				cfg.PromTargets[0].Jobs[0].Nodes[0].LabelProperties[domain.AppFieldPrefix+"custom"] = "pod"
+			},
+		},
+		{
+			name: "conditional property",
+			mutate: func(cfg *FileConfig) {
+				cfg.PromTargets[0].Jobs[0].Nodes[0].ConditionalProperties = []ConditionalPropertyConfig{
+					{
+						Name:  domain.AppFieldPrefix + "custom",
+						Type:  "static",
+						Value: "value",
+						Conditions: []ConditionConfig{
+							{
+								Type:  "label_exists",
+								Label: "pod",
+							},
+						},
+					},
+				}
+			},
+		},
+		{
+			name: "property transform",
+			mutate: func(cfg *FileConfig) {
+				cfg.PromTargets[0].Jobs[0].Nodes[0].PropertyTransforms = []PropertyTransformConfig{
+					{
+						Property: domain.AppFieldPrefix + "custom",
+						Process: []PropertyProcessorConfig{
+							{Type: PropertyProcessorTypeToUpper},
+						},
+					},
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validFileConfig()
+			tt.mutate(&cfg)
+			cfg.Normalize()
+
+			err := ValidateFileConfig(cfg)
+			if err == nil {
+				t.Fatal("expected validation to fail for reserved property prefix")
+			}
+			if !strings.Contains(err.Error(), "reserved prefix") {
+				t.Fatalf("expected reserved prefix error, got: %v", err)
+			}
+		})
 	}
 }
 

@@ -11,12 +11,12 @@ func TestNodeLockKeyPrefersNodeUID(t *testing.T) {
 		Name: "db01",
 		UID:  "node-uid-1",
 		Properties: map[string]any{
-			"node_uid": "node-uid-2",
+			domain.FieldNodeUID: "node-uid-2",
 		},
 	}
 
 	key := nodeLockKey(node)
-	if key != "node_uid:node-uid-1" {
+	if key != domain.FieldNodeUID+":node-uid-1" {
 		t.Fatalf("expected lock key to use node UID, got %q", key)
 	}
 }
@@ -25,13 +25,13 @@ func TestRelationshipLockKeyUsesRelationshipUID(t *testing.T) {
 	relationship := domain.GraphRelationship{
 		Type: "HOSTED_AT",
 		Properties: map[string]any{
-			"rel_uid": "rel-uid-1",
+			domain.FieldRelUID: "rel-uid-1",
 		},
 	}
 
 	key := relationshipLockKey(relationship)
-	if key != "rel_uid:rel-uid-1" {
-		t.Fatalf("expected lock key to use rel_uid, got %q", key)
+	if key != domain.FieldRelUID+":rel-uid-1" {
+		t.Fatalf("expected lock key to use z4j_rel_uid, got %q", key)
 	}
 }
 
@@ -52,7 +52,7 @@ func TestUniqueSortedNodeLockKeysDeduplicate(t *testing.T) {
 	if len(keys) != 2 {
 		t.Fatalf("expected 2 unique node keys, got %#v", keys)
 	}
-	if keys[0] != "node_uid:node-a" || keys[1] != "node_uid:node-b" {
+	if keys[0] != domain.FieldNodeUID+":node-a" || keys[1] != domain.FieldNodeUID+":node-b" {
 		t.Fatalf("unexpected node keys order: %#v", keys)
 	}
 }
@@ -74,7 +74,7 @@ func TestUniqueSortedRelationshipLockKeysDeduplicate(t *testing.T) {
 	if len(keys) != 2 {
 		t.Fatalf("expected 2 unique relationship keys, got %#v", keys)
 	}
-	if keys[0] != "rel_uid:rel-a" || keys[1] != "rel_uid:rel-b" {
+	if keys[0] != domain.FieldRelUID+":rel-a" || keys[1] != domain.FieldRelUID+":rel-b" {
 		t.Fatalf("unexpected relationship keys order: %#v", keys)
 	}
 }

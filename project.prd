@@ -49,11 +49,14 @@ Atenção, entre as proriedades de node estáticos ou dinamicos, deve haver uma 
 
 Alem dessas configurações no yaml, para cada node a aplicação deve criar para os nodes:
 ### Campos criados automáticamento pela aplicação
-   - `node_uid`: UUID estavel em formato string , esse uuid deve ser gerado pelo script
+   - `z4j_node_uid`: UUID estavel em formato string , esse uuid deve ser gerado pelo script
+   - `z4j_template_hashes`: hashes canonicos do template do node
    - label base `Entity` : Todo node vai ter essa label base
-   - campo `origin = "auto"`
-   - campo `created_at` em ISO 8601 
-   - campo `updated_at` em ISO 8601 
+   - campo `z4j_origin = "auto"`
+   - campo `z4j_created_at` em ISO 8601
+   - campo `z4j_updated_at` em ISO 8601
+
+O prefixo `z4j_` e reservado para campos criados pela aplicacao e nao deve ser aceito em propriedades configuradas pelo usuario.
 
 - Na lista de relacionamentos, para cada relacionamento, o usuário vai definir a lógica pra criar aquele relacionamento, a partir das labels do datapoint. Cada relacionamento deve ser configuravel as seguintes opçoes:
 
@@ -82,11 +85,11 @@ Alem disso, cada relacionamento vai ter 2 objetos, o node de origem e node de de
 
 Alem dessas configurações no yaml, para cada relacionamento a aplicação deve criar para os relacionamentos:
 ### Campos criados automáticamento pela aplicação
-   - `rel_uid`: UUID estavel em formato string , esse uuid deve ser gerado pelo script
-   - `template_hash`: string canonica do template do relacionamento
-   - campo `origin = "auto"`
-   - campo `created_at` em ISO 8601 
-   - campo `updated_at` em ISO 8601 
+   - `z4j_rel_uid`: UUID estavel em formato string , esse uuid deve ser gerado pelo script
+   - `z4j_template_hash`: string canonica do template do relacionamento
+   - campo `z4j_origin = "auto"`
+   - campo `z4j_created_at` em ISO 8601
+   - campo `z4j_updated_at` em ISO 8601
 
 Para referencia, criei um arquivo de configuração no arquivo "config.demo.yaml" neste diretorio. Pode ter inconsistencias no arquivo, e não necessariamente todas as nomeclaturas e estruturas devem ser seguidas, é apenas uma referencia
 ----------------
@@ -95,7 +98,7 @@ Para referencia, criei um arquivo de configuração no arquivo "config.demo.yaml
 Regras para manter consistencia:
  -  Antes de criar um node, deve ser verificado a existencia de um node de mesmo tipo e nome no neo4j, se ja existe, considerar valor "update policy", para verificar se o node deve ser atualizado ou nao fazer nada.
  -  A criacao do relacionamento nao deve criar novos nodes, apenas o relacionamento entre nodes ja existentes, caso nodes nao existirem, nao deve fazer nada. Deve exister tambem verificar de relacionamento equivalente, se ja existe, considerar valor "update policy", para verificar se o relacionamento deve ser atualizado ou nao fazer nada.
- - Ao criar ou atualizar node, o campo "updated_at" sempre deve ser atualizado
+ - Ao criar ou atualizar node, o campo `z4j_updated_at` sempre deve ser atualizado
 
 
 

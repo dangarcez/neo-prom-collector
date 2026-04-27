@@ -115,7 +115,7 @@ func (r *Repository) findSelectorMatches(ctx context.Context, tx driver.ManagedT
 	if whereClause != "" {
 		query += " WHERE " + whereClause
 	}
-	query += " RETURN elementId(n) AS element_id, n.node_uid AS node_uid ORDER BY coalesce(n.node_uid, elementId(n))"
+	query += fmt.Sprintf(" RETURN elementId(n) AS element_id, n.%s AS %s ORDER BY coalesce(n.%s, elementId(n))", domain.FieldNodeUID, domain.FieldNodeUID, domain.FieldNodeUID)
 
 	result, err := tx.Run(ctx, query, params)
 	if err != nil {
@@ -135,10 +135,10 @@ func (r *Repository) findSelectorMatches(ctx context.Context, tx driver.ManagedT
 		}
 
 		nodeUID := ""
-		if uidValue, ok := result.Record().Get("node_uid"); ok && uidValue != nil {
+		if uidValue, ok := result.Record().Get(domain.FieldNodeUID); ok && uidValue != nil {
 			typedUID, ok := uidValue.(string)
 			if !ok {
-				return nil, fmt.Errorf("selector node_uid has unexpected type %T", uidValue)
+				return nil, fmt.Errorf("selector %s has unexpected type %T", domain.FieldNodeUID, uidValue)
 			}
 			nodeUID = typedUID
 		}
@@ -173,16 +173,14 @@ func (r *Repository) countRelationshipsByIdentity(
 	query := fmt.Sprintf(`
 MATCH (source) WHERE elementId(source) = $source_id
 MATCH (target) WHERE elementId(target) = $target_id
-OPTIONAL MATCH (source)-[rel:%s]->(target)
-WHERE rel.template_hash = $template_hash OR rel.template_hashes = $legacy_template_hashes
+OPTIONAL MATCH (source)-[rel:%s {%s: $template_hash}]->(target)
 RETURN count(rel) AS count
-`, relationshipType)
+`, relationshipType, domain.FieldRelationshipTemplateHash)
 
 	count, err := executeCountQuery(ctx, tx, query, map[string]any{
-		"source_id":              sourceID,
-		"target_id":              targetID,
-		"template_hash":          templateHash,
-		"legacy_template_hashes": legacyRelationshipTemplateHashes(templateHash),
+		"source_id":     sourceID,
+		"target_id":     targetID,
+		"template_hash": templateHash,
 	}, "count")
 	if err != nil {
 		return 0, fmt.Errorf("count existing relationships: %w", err)
@@ -205,11 +203,10 @@ func (r *Repository) createRelationship(
 	}
 
 	properties := cloneMap(relationship.Properties)
-	delete(properties, "template_hashes")
-	properties["template_hash"] = relationshipTemplateHash(relationship)
+	properties[domain.FieldRelationshipTemplateHash] = relationshipTemplateHash(relationship)
 	nowText := now.Format(time.RFC3339)
-	properties["created_at"] = nowText
-	properties["updated_at"] = nowText
+	properties[domain.FieldCreatedAt] = nowText
+	properties[domain.FieldUpdatedAt] = nowText
 	applyExpiration(properties, relationship.UpdatePolicy, relationship.ExpirationTimeMin, now)
 
 	query := fmt.Sprintf(`
@@ -244,17 +241,15 @@ func (r *Repository) loadRelationshipPropertiesByIdentity(
 	query := fmt.Sprintf(`
 MATCH (source) WHERE elementId(source) = $source_id
 MATCH (target) WHERE elementId(target) = $target_id
-MATCH (source)-[rel:%s]->(target)
-WHERE rel.template_hash = $template_hash OR rel.template_hashes = $legacy_template_hashes
+MATCH (source)-[rel:%s {%s: $template_hash}]->(target)
 RETURN properties(rel) AS properties
 LIMIT 1
-`, relationshipType)
+`, relationshipType, domain.FieldRelationshipTemplateHash)
 
 	result, err := tx.Run(ctx, query, map[string]any{
-		"source_id":              sourceID,
-		"target_id":              targetID,
-		"template_hash":          templateHash,
-		"legacy_template_hashes": legacyRelationshipTemplateHashes(templateHash),
+		"source_id":     sourceID,
+		"target_id":     targetID,
+		"template_hash": templateHash,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("run relationship properties query: %w", err)
@@ -300,54 +295,30 @@ func (r *Repository) updateRelationship(
 	templateHash := relationshipTemplateHash(relationship)
 
 	properties := cloneMap(relationship.Properties)
-	delete(properties, "template_hashes")
-	properties["template_hash"] = templateHash
-	properties["updated_at"] = now.Format(time.RFC3339)
+	properties[domain.FieldRelationshipTemplateHash] = templateHash
+	properties[domain.FieldUpdatedAt] = now.Format(time.RFC3339)
 	applyExpiration(properties, relationship.UpdatePolicy, relationship.ExpirationTimeMin, now)
 
 	query := fmt.Sprintf(`
 MATCH (source) WHERE elementId(source) = $source_id
 MATCH (target) WHERE elementId(target) = $target_id
-MATCH (source)-[rel:%s]->(target)
-WHERE rel.template_hash = $template_hash OR rel.template_hashes = $legacy_template_hashes
+MATCH (source)-[rel:%s {%s: $template_hash}]->(target)
 SET rel += $properties
-REMOVE rel.template_hashes
 RETURN 'updated' AS action
-`, relationshipType)
+`, relationshipType, domain.FieldRelationshipTemplateHash)
 
 	return executeActionQuery(ctx, tx, query, map[string]any{
-		"source_id":              sourceID,
-		"target_id":              targetID,
-		"template_hash":          templateHash,
-		"legacy_template_hashes": legacyRelationshipTemplateHashes(templateHash),
-		"properties":             properties,
+		"source_id":     sourceID,
+		"target_id":     targetID,
+		"template_hash": templateHash,
+		"properties":    properties,
 	})
 }
 
 func relationshipTemplateHash(relationship domain.GraphRelationship) string {
-	if value, ok := relationship.Properties["template_hash"]; ok && value != nil {
+	if value, ok := relationship.Properties[domain.FieldRelationshipTemplateHash]; ok && value != nil {
 		return fmt.Sprint(value)
 	}
 
-	if value, ok := relationship.Properties["template_hashes"]; ok {
-		switch typed := value.(type) {
-		case []string:
-			if len(typed) > 0 {
-				return typed[0]
-			}
-		case []any:
-			if len(typed) > 0 {
-				return fmt.Sprint(typed[0])
-			}
-		}
-	}
-
 	return relationship.TemplateHash
-}
-
-func legacyRelationshipTemplateHashes(templateHash string) []string {
-	if templateHash == "" {
-		return nil
-	}
-	return []string{templateHash}
 }
