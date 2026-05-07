@@ -212,14 +212,19 @@ func (r RelationshipTemplateConfig) NormalizedTemplateHash() string {
 }
 
 type RelationshipEndpointConfig struct {
-	Type                   string             `yaml:"type"`
-	MatchAttributes        SelectorAttributes `yaml:"match_attributes"`
-	LegacyMatchLabelAttrs  map[string]any     `yaml:"match_label_attributes"`
-	LegacyMatchStaticAttrs map[string]any     `yaml:"match_static_attributes"`
+	Type                   string                    `yaml:"type"`
+	MatchAttributes        SelectorAttributes        `yaml:"match_attributes"`
+	PriorTransform         []PropertyTransformConfig `yaml:"prior_transform"`
+	LegacyMatchLabelAttrs  map[string]any            `yaml:"match_label_attributes"`
+	LegacyMatchStaticAttrs map[string]any            `yaml:"match_static_attributes"`
 }
 
 func (e *RelationshipEndpointConfig) Normalize() {
 	e.MatchAttributes.Normalize()
+
+	for i := range e.PriorTransform {
+		e.PriorTransform[i].Normalize()
+	}
 
 	for key, value := range e.LegacyMatchStaticAttrs {
 		e.MatchAttributes.Static[key] = value

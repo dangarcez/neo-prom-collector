@@ -313,6 +313,129 @@ func TestPlannerPlanAppliesPropertyTransforms(t *testing.T) {
 	}
 }
 
+func TestPlannerPlanAppliesPriorTransformToRelationshipSelectors(t *testing.T) {
+	planner := NewPlanner()
+
+	upperNameTransform := []config.PropertyTransformConfig{
+		{
+			Property: "name",
+			Process: []config.PropertyProcessorConfig{
+				{Type: config.PropertyProcessorTypeToUpper},
+			},
+		},
+	}
+
+	job := config.JobConfig{
+		Name:  "pods",
+		Query: "kube_pod_info",
+		Nodes: []config.NodeTemplateConfig{
+			{
+				Types:              []string{"Namespace"},
+				TemplateHashes:     []string{"namespace-v1"},
+				LabelProperties:    map[string]string{"name": "namespace"},
+				PropertyTransforms: upperNameTransform,
+			},
+			{
+				Types:              []string{"Pod"},
+				TemplateHashes:     []string{"pod-v1"},
+				LabelProperties:    map[string]string{"name": "pod"},
+				PropertyTransforms: upperNameTransform,
+			},
+		},
+		Relationships: []config.RelationshipTemplateConfig{
+			{
+				Type:         "OWNS",
+				TemplateHash: "owns-v1",
+				Source: config.RelationshipEndpointConfig{
+					Type: "Namespace",
+					MatchAttributes: config.SelectorAttributes{
+						Labels: map[string]string{
+							"name": "namespace",
+						},
+					},
+					PriorTransform: []config.PropertyTransformConfig{
+						{
+							Property: "namespace",
+							Process: []config.PropertyProcessorConfig{
+								{Type: config.PropertyProcessorTypeToUpper},
+							},
+						},
+					},
+				},
+				Target: config.RelationshipEndpointConfig{
+					Type: "Pod",
+					MatchAttributes: config.SelectorAttributes{
+						Labels: map[string]string{
+							"name": "pod",
+						},
+					},
+					PriorTransform: []config.PropertyTransformConfig{
+						{
+							Property: "pod",
+							Process: []config.PropertyProcessorConfig{
+								{Type: config.PropertyProcessorTypeToUpper},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	job.Normalize(30)
+
+	datapoint := domain.Datapoint{
+		Labels: map[string]string{
+			"namespace": "production",
+			"pod":       "api-0",
+		},
+		Value:     1,
+		Timestamp: time.Unix(1700000000, 0).UTC(),
+	}
+
+	plan, err := planner.Plan(job, datapoint)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if len(plan.Nodes) != 2 {
+		t.Fatalf("expected 2 nodes, got %d", len(plan.Nodes))
+	}
+	if len(plan.Relationships) != 1 {
+		t.Fatalf("expected 1 relationship, got %d", len(plan.Relationships))
+	}
+
+	relationship := plan.Relationships[0]
+	if relationship.Source.Attributes["name"] != "PRODUCTION" {
+		t.Fatalf("expected transformed source selector name, got %#v", relationship.Source.Attributes["name"])
+	}
+	if relationship.Target.Attributes["name"] != "API-0" {
+		t.Fatalf("expected transformed target selector name, got %#v", relationship.Target.Attributes["name"])
+	}
+
+	expectedRelUID := RelationshipUID(
+		"OWNS",
+		"owns-v1",
+		domain.NodeSelector{
+			Type: "Namespace",
+			Attributes: map[string]any{
+				"name": "PRODUCTION",
+			},
+		},
+		domain.NodeSelector{
+			Type: "Pod",
+			Attributes: map[string]any{
+				"name": "API-0",
+			},
+		},
+	)
+	if relationship.UID != expectedRelUID {
+		t.Fatalf("expected relationship UID %q, got %q", expectedRelUID, relationship.UID)
+	}
+	if relationship.Properties[domain.FieldRelUID] != expectedRelUID {
+		t.Fatalf("expected relationship property z4j_rel_uid %q, got %#v", expectedRelUID, relationship.Properties[domain.FieldRelUID])
+	}
+}
+
 func TestPlannerPlanCarriesExpirationMetadataWithoutInjectingExpiresAt(t *testing.T) {
 	planner := NewPlanner()
 	nodeExpiration := 30

@@ -170,7 +170,7 @@ func validateSelector(path string, endpoint RelationshipEndpointConfig) error {
 		}
 	}
 
-	return nil
+	return validatePriorTransforms(path+".prior_transform", endpoint.PriorTransform)
 }
 
 func validateStaticProperties(path string, properties map[string]any) error {
@@ -234,14 +234,24 @@ func validateConditionalProperties(path string, properties []ConditionalProperty
 }
 
 func validatePropertyTransforms(path string, transforms []PropertyTransformConfig) error {
+	return validateTransformList(path, transforms, true)
+}
+
+func validatePriorTransforms(path string, transforms []PropertyTransformConfig) error {
+	return validateTransformList(path, transforms, false)
+}
+
+func validateTransformList(path string, transforms []PropertyTransformConfig, requireUserPropertyName bool) error {
 	for transformIndex, transform := range transforms {
 		transformPath := fmt.Sprintf("%s[%d]", path, transformIndex)
 
 		if strings.TrimSpace(transform.Property) == "" {
 			return fmt.Errorf("%s.property is required", transformPath)
 		}
-		if err := validateUserPropertyName(transformPath+".property", transform.Property); err != nil {
-			return err
+		if requireUserPropertyName {
+			if err := validateUserPropertyName(transformPath+".property", transform.Property); err != nil {
+				return err
+			}
 		}
 
 		if len(transform.Process) == 0 {

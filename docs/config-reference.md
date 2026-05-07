@@ -356,11 +356,15 @@ Esses blocos definem como localizar os nodes ja existentes que receberao o relac
 | `type` | string | sim | Label tecnica do node a ser encontrado. |
 | `match_attributes.static` | mapa | nao | Atributos fixos usados no match. |
 | `match_attributes.labels` | mapa string->string | nao | Atributos resolvidos a partir de labels do datapoint. |
+| `prior_transform` | lista | nao | Processamentos aplicados ao valor da label/token de origem antes do match. |
 
 Pelo menos um atributo de match deve existir entre `static` e `labels`.
 
 Comportamento de match:
 
+- `prior_transform` roda apenas sobre valores vindos de `match_attributes.labels`; atributos em `match_attributes.static` nao sao transformados
+- em `prior_transform`, `property` referencia o token de origem usado no lado direito de `match_attributes.labels`, nao a propriedade do node
+- se `prior_transform.property` nao corresponder a nenhum token usado em `match_attributes.labels`, o item e ignorado
 - se nenhum `source` ou nenhum `target` for encontrado, o relacionamento e ignorado
 - se houver multiplos `source` e multiplos `target`, o coletor cria o produto cartesiano entre eles
 - exemplo: `2 source x 3 target = 6` relacionamentos
@@ -376,7 +380,13 @@ source:
       z4j_origin: auto
     labels:
       name: namespace
+  prior_transform:
+    - property: namespace
+      process:
+        - type: TO_UPPER
 ```
+
+Nesse exemplo, `property: namespace` transforma o valor da label `namespace` antes de comparar esse valor com a propriedade `name` do node `Namespace`.
 
 ### Aliases legados suportados
 
@@ -404,7 +414,7 @@ Existem quatro formas de definir e ajustar propriedades em nodes e relacionament
 
 Separadamente dessas quatro formas, nodes e relacionamentos tambem podem declarar `expiration_time_min`, que nao escreve uma propriedade de negocio diretamente no planner. Esse campo instrui o repositorio a gerar `z4j_expires_at` no momento da escrita, com base no horario atual UTC.
 
-O prefixo `z4j_` e reservado para campos automaticos ou semiautomaticos do app. Propriedades criadas pelo usuario em `static_properties`, `label_properties`, `conditional_properties` e `property_transforms.property` nao podem usar esse prefixo.
+O prefixo `z4j_` e reservado para campos automaticos ou semiautomaticos do app. Propriedades criadas pelo usuario em `static_properties`, `label_properties`, `conditional_properties` e `property_transforms.property` nao podem usar esse prefixo. Essa restricao nao se aplica a `prior_transform.property`, porque ali o valor representa um token de origem usado em `match_attributes.labels`.
 
 ### `static_properties`
 
@@ -535,7 +545,7 @@ Comportamento:
 - `REGEX` aceita padroes com ou sem delimitadores `/.../`; os delimitadores sao removidos antes da compilacao
 - `REGEX` exige ao menos um grupo de captura e `output` precisa referenciar ao menos um grupo existente, como `$1` e `$2`
 - em node, transformar `name` muda o `name` final e o `z4j_node_uid` derivado dele
-- em relacionamento, `property_transforms` afeta apenas `properties`; `source` e `target` nao participam desse pipeline
+- em relacionamento, `property_transforms` afeta apenas `properties`; para transformar valores antes do match de `source` e `target`, use `prior_transform` no endpoint
 - a ordem da lista `process` importa; a saida de um processor vira a entrada do proximo
 
 ### `expiration_time_min`
@@ -663,6 +673,8 @@ Os tokens reservados abaixo podem ser usados em `label_properties`, `from_label`
 | `__value__` | Valor numerico do datapoint. |
 | `__timestamp__` | Timestamp do datapoint em RFC3339 UTC. |
 
+Quando usados no lado direito de `match_attributes.labels`, esses tokens tambem podem ser referenciados por `prior_transform.property`.
+
 Qualquer outro token e interpretado como nome de label do datapoint.
 
 ## `update_policy`
@@ -719,7 +731,7 @@ Se o campo for omitido, o default e `create`.
 - `nodes[].type` e convertido para `nodes[].types` com um item
 - `relationships[].template_hashes` com um unico item e convertido para `template_hash`
 - `mergeAtChange` e `merge-at-change` sao aceitos como alias de `merge_at_change`
-- `property_transforms[].process[].type` e normalizado para caixa alta antes da validacao
+- `property_transforms[].process[].type` e `prior_transform[].process[].type` sao normalizados para caixa alta antes da validacao
 - aliases legados de match sao incorporados em `match_attributes`
 - strings com espacos nas extremidades sao `trimadas` nos campos relevantes
 
@@ -744,8 +756,8 @@ O bootstrap falha antes de iniciar o scheduler quando encontrar erros como:
 - `update_policy` fora de `create`, `merge` ou `merge_at_change`
 - condicoes com mais de um operador
 - `conditional_properties` sem `name`, `type` valido ou `conditions`
-- `property_transforms` sem `property`, sem `process` ou com `process[].type` nao suportado
-- `property_transforms[].process[]` do tipo `REGEX` sem `pattern`, sem `output`, sem referencia a grupo, sem grupo de captura ou com referencia a grupo inexistente
+- `property_transforms` ou `prior_transform` sem `property`, sem `process` ou com `process[].type` nao suportado
+- `property_transforms[].process[]` ou `prior_transform[].process[]` do tipo `REGEX` sem `pattern`, sem `output`, sem referencia a grupo, sem grupo de captura ou com referencia a grupo inexistente
 - propriedades de usuario com prefixo reservado `z4j_`
 - `expiration_time_min <= 0` quando informado
 

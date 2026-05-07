@@ -215,7 +215,7 @@ Centraliza logs estruturados, métricas operacionais e eventualmente health chec
 4. Carrega metadados de persistencia como `expiration_time_min`.
 5. Injeta campos automáticos, calcula `z4j_node_uid` e gera o plano de persistência.
 6. O engine avalia as condições dos relacionamentos.
-7. Para cada relacionamento elegível, resolve propriedades, aplica `property_transforms`, carrega `expiration_time_min`, resolve selectors e gera o plano de persistência sem criar nodes.
+7. Para cada relacionamento elegível, resolve propriedades, aplica `property_transforms`, carrega `expiration_time_min`, resolve selectors aplicando `prior_transform` sobre tokens de origem quando configurado e gera o plano de persistência sem criar nodes.
 
 ### 4. Persistência no Neo4j
 

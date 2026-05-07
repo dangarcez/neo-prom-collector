@@ -97,6 +97,88 @@ func TestValidateFileConfigAcceptsPropertyTransforms(t *testing.T) {
 	}
 }
 
+func TestValidateFileConfigAcceptsRelationshipEndpointPriorTransform(t *testing.T) {
+	cfg := validFileConfig()
+	cfg.PromTargets[0].Jobs[0].Relationships[0].Source.PriorTransform = []PropertyTransformConfig{
+		{
+			Property: "namespace",
+			Process: []PropertyProcessorConfig{
+				{Type: "to_upper"},
+			},
+		},
+	}
+	cfg.PromTargets[0].Jobs[0].Relationships[0].Target.PriorTransform = []PropertyTransformConfig{
+		{
+			Property: "pod",
+			Process: []PropertyProcessorConfig{
+				{
+					Type:    "regex",
+					Pattern: `/(\w+)-(\d+)/`,
+					Output:  "$1_$2",
+				},
+			},
+		},
+	}
+	cfg.Normalize()
+
+	if got := cfg.PromTargets[0].Jobs[0].Relationships[0].Source.PriorTransform[0].Process[0].Type; got != PropertyProcessorTypeToUpper {
+		t.Fatalf("expected source prior transform processor type to normalize to %q, got %q", PropertyProcessorTypeToUpper, got)
+	}
+	if got := cfg.PromTargets[0].Jobs[0].Relationships[0].Target.PriorTransform[0].Process[0].Type; got != PropertyProcessorTypeRegex {
+		t.Fatalf("expected target prior transform processor type to normalize to %q, got %q", PropertyProcessorTypeRegex, got)
+	}
+
+	if err := ValidateFileConfig(cfg); err != nil {
+		t.Fatalf("expected config to accept prior_transform, got error: %v", err)
+	}
+}
+
+func TestValidateFileConfigAcceptsPriorTransformSourceTokenWithReservedPrefix(t *testing.T) {
+	cfg := validFileConfig()
+	cfg.PromTargets[0].Jobs[0].Relationships[0].Source.MatchAttributes.Labels["name"] = domain.AppFieldPrefix + "source"
+	cfg.PromTargets[0].Jobs[0].Relationships[0].Source.PriorTransform = []PropertyTransformConfig{
+		{
+			Property: domain.AppFieldPrefix + "source",
+			Process: []PropertyProcessorConfig{
+				{Type: PropertyProcessorTypeToUpper},
+			},
+		},
+	}
+	cfg.Normalize()
+
+	if err := ValidateFileConfig(cfg); err != nil {
+		t.Fatalf("expected prior_transform to accept source tokens with reserved prefix, got error: %v", err)
+	}
+}
+
+func TestValidateFileConfigRejectsInvalidRelationshipEndpointPriorTransform(t *testing.T) {
+	cfg := validFileConfig()
+	cfg.PromTargets[0].Jobs[0].Relationships[0].Source.PriorTransform = []PropertyTransformConfig{
+		{
+			Property: "namespace",
+			Process: []PropertyProcessorConfig{
+				{
+					Type:   PropertyProcessorTypeRegex,
+					Output: "$1",
+				},
+			},
+		},
+	}
+	cfg.Normalize()
+
+	err := ValidateFileConfig(cfg)
+	if err == nil {
+		t.Fatal("expected validation to fail when prior_transform regex has no pattern")
+	}
+
+	if !strings.Contains(err.Error(), "prior_transform") {
+		t.Fatalf("expected prior_transform path in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "pattern is required") {
+		t.Fatalf("expected pattern required error, got: %v", err)
+	}
+}
+
 func TestValidateFileConfigRejectsRegexPropertyTransformWithoutPattern(t *testing.T) {
 	cfg := validFileConfig()
 	cfg.PromTargets[0].Jobs[0].Nodes[0].PropertyTransforms = []PropertyTransformConfig{

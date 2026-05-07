@@ -101,6 +101,75 @@ prom_targets:
 	}
 }
 
+func TestLoadFileNormalizesRelationshipEndpointPriorTransform(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	content := []byte(`
+prom_targets:
+  - name: prom
+    base_url: http://localhost:9090
+    runtime:
+      default_interval_seconds: 30
+      dry_run: true
+    jobs:
+      - name: job
+        query: up
+        relationships:
+          - type: OWNS
+            template_hash: owns-v1
+            source:
+              type: Namespace
+              match_attributes:
+                labels:
+                  name: namespace
+              prior_transform:
+                - property: namespace
+                  process:
+                    - type: to_upper
+            target:
+              type: Pod
+              match_attributes:
+                labels:
+                  name: pod
+              prior_transform:
+                - property: pod
+                  process:
+                    - type: regex
+                      pattern: "/(\\w+)-(\\d+)/"
+                      output: "$1_$2"
+`)
+
+	if err := os.WriteFile(configPath, content, 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	cfg, err := LoadFile(configPath)
+	if err != nil {
+		t.Fatalf("expected config to load, got error: %v", err)
+	}
+
+	sourceTransforms := cfg.PromTargets[0].Jobs[0].Relationships[0].Source.PriorTransform
+	if len(sourceTransforms) != 1 {
+		t.Fatalf("expected one source prior transform, got %d", len(sourceTransforms))
+	}
+	if sourceTransforms[0].Property != "namespace" {
+		t.Fatalf("expected source prior transform property to be namespace, got %q", sourceTransforms[0].Property)
+	}
+	if sourceTransforms[0].Process[0].Type != PropertyProcessorTypeToUpper {
+		t.Fatalf("expected source prior transform processor to normalize to %q, got %q", PropertyProcessorTypeToUpper, sourceTransforms[0].Process[0].Type)
+	}
+
+	targetTransforms := cfg.PromTargets[0].Jobs[0].Relationships[0].Target.PriorTransform
+	if len(targetTransforms) != 1 {
+		t.Fatalf("expected one target prior transform, got %d", len(targetTransforms))
+	}
+	if targetTransforms[0].Property != "pod" {
+		t.Fatalf("expected target prior transform property to be pod, got %q", targetTransforms[0].Property)
+	}
+	if targetTransforms[0].Process[0].Type != PropertyProcessorTypeRegex {
+		t.Fatalf("expected target prior transform processor to normalize to %q, got %q", PropertyProcessorTypeRegex, targetTransforms[0].Process[0].Type)
+	}
+}
+
 func TestLoadFilePreservesExpirationTimeMin(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	content := []byte(`

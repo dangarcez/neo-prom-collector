@@ -64,13 +64,22 @@ func ResolveProperties(
 
 func ResolveSelector(endpoint config.RelationshipEndpointConfig, datapoint domain.Datapoint) (domain.NodeSelector, error) {
 	attributes := cloneMap(endpoint.MatchAttributes.Static)
+	resolvedSourceValues := make(map[string]any, len(endpoint.MatchAttributes.Labels))
 
 	for attributeName, sourceToken := range endpoint.MatchAttributes.Labels {
 		resolved, err := ResolveToken(sourceToken, datapoint)
 		if err != nil {
 			return domain.NodeSelector{}, fmt.Errorf("resolve selector attribute %q: %w", attributeName, err)
 		}
-		attributes[attributeName] = resolved
+		resolvedSourceValues[sourceToken] = resolved
+	}
+
+	if err := ApplyPropertyTransforms(resolvedSourceValues, endpoint.PriorTransform); err != nil {
+		return domain.NodeSelector{}, fmt.Errorf("apply selector prior transforms: %w", err)
+	}
+
+	for attributeName, sourceToken := range endpoint.MatchAttributes.Labels {
+		attributes[attributeName] = resolvedSourceValues[sourceToken]
 	}
 
 	return domain.NodeSelector{

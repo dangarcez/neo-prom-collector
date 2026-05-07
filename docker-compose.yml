@@ -1,7 +1,7 @@
 services:
 
   neo-collector:
-    image: localhost/neo_prom_collector:latest
+    image: localhost/neo_prom_collector:1.1
     container_name: neo-collector
     restart: unless-stopped
     env_file:

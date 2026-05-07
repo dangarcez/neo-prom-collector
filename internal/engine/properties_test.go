@@ -332,3 +332,92 @@ func TestResolvePropertiesIgnoresRegexPropertyTransformWithoutMatch(t *testing.T
 		t.Fatalf("expected unmatched regex to preserve value, got: %#v", properties["name"])
 	}
 }
+
+func TestResolveSelectorAppliesPriorTransformToSourceToken(t *testing.T) {
+	datapoint := domain.Datapoint{
+		Labels: map[string]string{
+			"pod": "api-0",
+		},
+		Value:     1,
+		Timestamp: time.Date(2026, 4, 11, 15, 4, 5, 0, time.UTC),
+	}
+
+	selector, err := ResolveSelector(
+		config.RelationshipEndpointConfig{
+			Type: "Pod",
+			MatchAttributes: config.SelectorAttributes{
+				Static: map[string]any{
+					"kind": "workload",
+				},
+				Labels: map[string]string{
+					"name": "pod",
+				},
+			},
+			PriorTransform: []config.PropertyTransformConfig{
+				{
+					Property: "pod",
+					Process: []config.PropertyProcessorConfig{
+						{Type: config.PropertyProcessorTypeToUpper},
+					},
+				},
+				{
+					Property: "kind",
+					Process: []config.PropertyProcessorConfig{
+						{Type: config.PropertyProcessorTypeToUpper},
+					},
+				},
+			},
+		},
+		datapoint,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if selector.Attributes["name"] != "API-0" {
+		t.Fatalf("expected transformed selector attribute, got: %#v", selector.Attributes["name"])
+	}
+	if selector.Attributes["kind"] != "workload" {
+		t.Fatalf("expected static selector attribute not to be transformed, got: %#v", selector.Attributes["kind"])
+	}
+	if datapoint.Labels["pod"] != "api-0" {
+		t.Fatalf("expected datapoint label not to be mutated, got: %#v", datapoint.Labels["pod"])
+	}
+}
+
+func TestResolveSelectorPriorTransformIgnoresNodeAttributeName(t *testing.T) {
+	datapoint := domain.Datapoint{
+		Labels: map[string]string{
+			"pod": "api-0",
+		},
+		Value:     1,
+		Timestamp: time.Date(2026, 4, 11, 15, 4, 5, 0, time.UTC),
+	}
+
+	selector, err := ResolveSelector(
+		config.RelationshipEndpointConfig{
+			Type: "Pod",
+			MatchAttributes: config.SelectorAttributes{
+				Labels: map[string]string{
+					"name": "pod",
+				},
+			},
+			PriorTransform: []config.PropertyTransformConfig{
+				{
+					Property: "name",
+					Process: []config.PropertyProcessorConfig{
+						{Type: config.PropertyProcessorTypeToUpper},
+					},
+				},
+			},
+		},
+		datapoint,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if selector.Attributes["name"] != "api-0" {
+		t.Fatalf("expected prior_transform to ignore node attribute name, got: %#v", selector.Attributes["name"])
+	}
+}
