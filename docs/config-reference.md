@@ -159,10 +159,44 @@ Cada item representa um endpoint Prometheus independente, com sua propria lista 
 | --- | --- | --- | --- | --- |
 | `name` | string | sim | - | Nome logico do target. Aparece em logs e metricas. |
 | `base_url` | string | sim | - | URL base do Prometheus, por exemplo `http://localhost:9090`. |
+| `azure_auth` | objeto | nao | ausente | Ativa autenticacao Microsoft Entra por Azure Managed Identity para Azure Monitor Managed Prometheus. |
 | `timeout_seconds` | inteiro | nao | `10` | Timeout HTTP usado nas queries para esse target. |
 | `verify_tls` | boolean | nao | `true` | Se `false`, desabilita verificacao TLS do cliente HTTP. |
 | `runtime` | objeto | nao | ver abaixo | Parametros de execucao do target. |
 | `jobs` | lista | sim | - | Lista de jobs executados contra esse target. |
+
+## Azure auth do target
+
+Bloco: `prom_targets[].azure_auth`
+
+Quando `azure_auth` esta presente, o coletor usa Azure Managed Identity para obter um token Microsoft Entra e enviar `Authorization: Bearer <token>` nas chamadas para o Prometheus. Quando o bloco esta ausente, o comportamento permanece sem autenticacao.
+
+### Campos
+
+| Campo | Tipo | Obrigatorio | Default | Descricao |
+| --- | --- | --- | --- | --- |
+| `managed_identity_id` | string | nao | vazio | Client ID ou resource ID de uma user-assigned managed identity. Se vazio ou omitido, usa a identidade default do ambiente AKS. |
+
+Regras:
+
+- `azure_auth` exige `base_url` com `https`
+- `base_url` deve apontar para o query endpoint workspace-scoped do Azure Monitor Workspace, por exemplo `https://<workspace>.<region>.prometheus.monitor.azure.com`
+- a identidade usada precisa ter o role `Monitoring Data Reader` no Azure Monitor Workspace
+- `managed_identity_id` iniciado por `/subscriptions/` e tratado como resource ID; outros valores sao tratados como client ID
+- o token e solicitado com o scope `https://prometheus.monitor.azure.com/.default`
+
+Exemplo:
+
+```yaml
+prom_targets:
+  - name: azure_prometheus
+    base_url: https://my-workspace.eastus.prometheus.monitor.azure.com
+    azure_auth:
+      managed_identity_id: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/prom-reader
+    jobs:
+      - name: aks_pods
+        query: kube_pod_info
+```
 
 ## Runtime do target
 
@@ -717,6 +751,7 @@ Se o campo for omitido, o default e `create`.
 
 - `prom_targets[].timeout_seconds`: `10`
 - `prom_targets[].verify_tls`: `true`
+- `prom_targets[].azure_auth`: ausente, sem autenticacao
 - `prom_targets[].runtime.default_interval_seconds`: `60`
 - `prom_targets[].runtime.sleep_seconds`: `0`
 - `prom_targets[].runtime.dry_run`: `false`

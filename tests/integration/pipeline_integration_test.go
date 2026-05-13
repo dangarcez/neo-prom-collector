@@ -40,11 +40,14 @@ func TestPrometheusCollectorAgainstRealPrometheus(t *testing.T) {
 	promContainer, promURL := startPrometheusContainer(ctx, t)
 	defer terminateContainer(context.Background(), t, promContainer)
 
-	client := prometheus.NewClient(config.PromTargetConfig{
+	client, err := prometheus.NewClient(config.PromTargetConfig{
 		Name:           "integration-prometheus",
 		BaseURL:        promURL,
 		TimeoutSeconds: 5,
 	})
+	if err != nil {
+		t.Fatalf("create prometheus client: %v", err)
+	}
 
 	datapoints := waitForPrometheusDatapoints(ctx, t, client, "prometheus_build_info")
 	if len(datapoints) == 0 {
@@ -67,7 +70,7 @@ func TestProcessorPipelineWithRealPrometheusAndNeo4j(t *testing.T) {
 	neoContainer, neo4jURI := startNeo4jContainer(ctx, t)
 	defer terminateContainer(context.Background(), t, neoContainer)
 
-	promClient := prometheus.NewClient(config.PromTargetConfig{
+	promClient, err := prometheus.NewClient(config.PromTargetConfig{
 		Name:           "main_prometheus",
 		BaseURL:        promURL,
 		TimeoutSeconds: 5,
@@ -75,6 +78,9 @@ func TestProcessorPipelineWithRealPrometheusAndNeo4j(t *testing.T) {
 			DryRun: false,
 		},
 	})
+	if err != nil {
+		t.Fatalf("create prometheus client: %v", err)
+	}
 	datapoints := waitForPrometheusDatapoints(ctx, t, promClient, "prometheus_build_info")
 	if len(datapoints) == 0 {
 		t.Fatal("expected prometheus to return datapoints before processing")

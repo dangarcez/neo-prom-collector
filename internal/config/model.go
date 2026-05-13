@@ -51,6 +51,7 @@ func (c FileConfig) AllTargetsDryRun() bool {
 type PromTargetConfig struct {
 	Name           string              `yaml:"name"`
 	BaseURL        string              `yaml:"base_url"`
+	AzureAuth      *AzureAuthConfig    `yaml:"azure_auth"`
 	TimeoutSeconds int                 `yaml:"timeout_seconds"`
 	VerifyTLS      *bool               `yaml:"verify_tls"`
 	Runtime        TargetRuntimeConfig `yaml:"runtime"`
@@ -66,6 +67,10 @@ func (t *PromTargetConfig) Normalize() {
 		t.Runtime.DefaultIntervalSeconds = 60
 	}
 
+	if t.AzureAuth != nil {
+		t.AzureAuth.Normalize()
+	}
+
 	for i := range t.Jobs {
 		t.Jobs[i].Normalize(t.Runtime.DefaultIntervalSeconds)
 	}
@@ -77,6 +82,14 @@ func (t PromTargetConfig) VerifyTLSEnabled() bool {
 	}
 
 	return *t.VerifyTLS
+}
+
+type AzureAuthConfig struct {
+	ManagedIdentityID string `yaml:"managed_identity_id"`
+}
+
+func (a *AzureAuthConfig) Normalize() {
+	a.ManagedIdentityID = strings.TrimSpace(a.ManagedIdentityID)
 }
 
 type TargetRuntimeConfig struct {

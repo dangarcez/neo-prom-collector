@@ -159,7 +159,9 @@ Responsável por executar cada job no intervalo definido. O scheduler cria uma r
 
 ### `internal/collector/prometheus`
 
-Encapsula comunicação com Prometheus, inclusive timeout, TLS, tratamento de erro e conversão da resposta em `Datapoint`.
+Encapsula comunicação com Prometheus, inclusive timeout, TLS, autenticacao opcional por target, tratamento de erro e conversão da resposta em `Datapoint`.
+
+Quando `prom_targets[].azure_auth` estiver configurado, o cliente usa Azure Managed Identity para obter token Microsoft Entra e autenticar chamadas ao Azure Monitor Managed Prometheus. A identidade pode ser a default do ambiente AKS ou uma user-assigned identity selecionada por client ID ou resource ID.
 
 ### `internal/engine`
 
@@ -203,7 +205,7 @@ Centraliza logs estruturados, métricas operacionais e eventualmente health chec
 ### 2. Execução de job
 
 1. O scheduler dispara um job pelo intervalo configurado.
-2. O coletor chama o endpoint `/api/v1/query` do target Prometheus.
+2. O coletor chama o endpoint `/api/v1/query` do target Prometheus, adicionando `Authorization: Bearer <token>` quando o target usa `azure_auth`.
 3. A resposta é convertida em uma lista de datapoints padronizados, contendo labels, value e timestamp.
 4. Cada datapoint é processado isoladamente.
 

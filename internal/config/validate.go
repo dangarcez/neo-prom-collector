@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -23,6 +24,10 @@ func ValidateFileConfig(cfg FileConfig) error {
 
 		if strings.TrimSpace(target.BaseURL) == "" {
 			return fmt.Errorf("%s.base_url is required", targetPath)
+		}
+
+		if err := validateAzureAuth(targetPath+".azure_auth", target); err != nil {
+			return err
 		}
 
 		if len(target.Jobs) == 0 {
@@ -56,6 +61,23 @@ func ValidateFileConfig(cfg FileConfig) error {
 				}
 			}
 		}
+	}
+
+	return nil
+}
+
+func validateAzureAuth(path string, target PromTargetConfig) error {
+	if target.AzureAuth == nil {
+		return nil
+	}
+
+	parsed, err := url.Parse(strings.TrimSpace(target.BaseURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("%s requires base_url to be a valid HTTPS URL", path)
+	}
+
+	if !strings.EqualFold(parsed.Scheme, "https") {
+		return fmt.Errorf("%s requires base_url to use https", path)
 	}
 
 	return nil

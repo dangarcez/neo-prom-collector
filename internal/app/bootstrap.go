@@ -60,7 +60,10 @@ func Bootstrap(ctx context.Context, opts Options) (*Runtime, error) {
 
 	for _, target := range fileConfig.PromTargets {
 		target := target
-		client := prometheus.NewClient(target)
+		client, err := prometheus.NewClient(target)
+		if err != nil {
+			return nil, fmt.Errorf("create prometheus client for target %q: %w", target.Name, err)
+		}
 
 		for _, job := range target.Jobs {
 			job := job

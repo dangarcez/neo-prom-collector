@@ -16,6 +16,36 @@ func TestValidateFileConfigAcceptsMinimalConfig(t *testing.T) {
 	}
 }
 
+func TestValidateFileConfigAcceptsAzureAuthWithHTTPSBaseURL(t *testing.T) {
+	cfg := validFileConfig()
+	cfg.PromTargets[0].BaseURL = "https://workspace.eastus.prometheus.monitor.azure.com"
+	cfg.PromTargets[0].AzureAuth = &AzureAuthConfig{}
+	cfg.Normalize()
+
+	if err := ValidateFileConfig(cfg); err != nil {
+		t.Fatalf("expected config to accept azure_auth, got error: %v", err)
+	}
+}
+
+func TestValidateFileConfigRejectsAzureAuthWithHTTPBaseURL(t *testing.T) {
+	cfg := validFileConfig()
+	cfg.PromTargets[0].BaseURL = "http://workspace.eastus.prometheus.monitor.azure.com"
+	cfg.PromTargets[0].AzureAuth = &AzureAuthConfig{}
+	cfg.Normalize()
+
+	err := ValidateFileConfig(cfg)
+	if err == nil {
+		t.Fatal("expected validation to fail when azure_auth uses non-HTTPS base_url")
+	}
+
+	if !strings.Contains(err.Error(), "azure_auth") {
+		t.Fatalf("expected azure_auth path in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "https") {
+		t.Fatalf("expected https error, got: %v", err)
+	}
+}
+
 func TestValidateFileConfigRejectsNodeWithoutName(t *testing.T) {
 	cfg := validFileConfig()
 	cfg.PromTargets[0].Jobs[0].Nodes[0].LabelProperties = map[string]string{}

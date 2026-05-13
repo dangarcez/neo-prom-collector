@@ -224,3 +224,77 @@ prom_targets:
 		t.Fatalf("expected relationship expiration_time_min to be 15, got %#v", relationshipExpiration)
 	}
 }
+
+func TestLoadFileAcceptsAzureAuthWithoutManagedIdentityID(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	content := []byte(`
+prom_targets:
+  - name: azure-prom
+    base_url: https://workspace.eastus.prometheus.monitor.azure.com
+    azure_auth: {}
+    jobs:
+      - name: job
+        query: up
+        nodes:
+          - type: Pod
+            template_hashes:
+              - pod-v1
+            label_properties:
+              name: pod
+`)
+
+	if err := os.WriteFile(configPath, content, 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	cfg, err := LoadFile(configPath)
+	if err != nil {
+		t.Fatalf("expected config to load, got error: %v", err)
+	}
+
+	if cfg.PromTargets[0].AzureAuth == nil {
+		t.Fatal("expected azure_auth to be enabled")
+	}
+	if cfg.PromTargets[0].AzureAuth.ManagedIdentityID != "" {
+		t.Fatalf("expected empty managed_identity_id, got %q", cfg.PromTargets[0].AzureAuth.ManagedIdentityID)
+	}
+}
+
+func TestLoadFilePreservesAzureAuthManagedIdentityID(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	content := []byte(`
+prom_targets:
+  - name: azure-prom
+    base_url: https://workspace.eastus.prometheus.monitor.azure.com
+    azure_auth:
+      managed_identity_id: "  /subscriptions/sub/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/prom-reader  "
+    jobs:
+      - name: job
+        query: up
+        nodes:
+          - type: Pod
+            template_hashes:
+              - pod-v1
+            label_properties:
+              name: pod
+`)
+
+	if err := os.WriteFile(configPath, content, 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	cfg, err := LoadFile(configPath)
+	if err != nil {
+		t.Fatalf("expected config to load, got error: %v", err)
+	}
+
+	auth := cfg.PromTargets[0].AzureAuth
+	if auth == nil {
+		t.Fatal("expected azure_auth to be enabled")
+	}
+
+	want := "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/prom-reader"
+	if auth.ManagedIdentityID != want {
+		t.Fatalf("expected managed_identity_id %q, got %q", want, auth.ManagedIdentityID)
+	}
+}
